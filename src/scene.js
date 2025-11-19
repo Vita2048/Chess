@@ -43,12 +43,12 @@ export function initGame() {
 
     // Load GLTF model
     const loader = new GLTFLoader();
-    loader.load('/models/chess-set_FULL.glb', function(gltf) {
+    loader.load('/models/chess-set_FULL.glb', function (gltf) {
         console.log('GLTF loaded:', gltf);
         scene.add(gltf.scene);
 
         // Enable shadows for the model
-        gltf.scene.traverse(function(child) {
+        gltf.scene.traverse(function (child) {
             if (child.isMesh) {
                 child.castShadow = true;
                 child.receiveShadow = true;
@@ -57,10 +57,18 @@ export function initGame() {
 
         // Parse pieces from the model
         let piecesFound = 0;
-        gltf.scene.traverse(function(child) {
+        gltf.scene.traverse(function (child) {
             if (child.isMesh && child.name) {
                 const name = child.name.trim();
                 console.log('Processing mesh:', name);
+
+                // Check for board surface
+                if (name === 'pPlane1') {
+                    const worldPos = new THREE.Vector3();
+                    child.getWorldPosition(worldPos);
+                    boardY = worldPos.y;
+                    console.log('Found board surface pPlane1 at Y:', boardY);
+                }
 
                 // Parse name in format: Color_PieceName_Position
                 const parts = name.split('_');
@@ -120,10 +128,13 @@ export function initGame() {
 
         // Start animation loop
         animate();
-    }, undefined, function(error) {
+    }, undefined, function (error) {
         console.error('Error loading GLTF:', error);
     });
 }
+
+export let squareSize = 1.0; // Default, will be updated
+export let boardY = 0; // Default, will be updated from pPlane1
 
 function interpolateBoardSquares() {
     const fileMap = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
@@ -132,12 +143,22 @@ function interpolateBoardSquares() {
     // We expect pieces at ranks 1, 2, 7, 8.
     // We can interpolate ranks 3, 4, 5, 6.
 
+    let calculatedSize = false;
+
     for (let f = 0; f < 8; f++) {
         const file = fileMap[f];
         const p2 = boardSquares[`${file}2`]; // White Pawn
         const p7 = boardSquares[`${file}7`]; // Black Pawn
 
         if (p2 && p7) {
+            // Calculate square size if not yet done
+            if (!calculatedSize) {
+                const dist = p2.distanceTo(p7);
+                squareSize = dist / 5; // 5 squares between rank 2 and 7
+                console.log("Calculated square size:", squareSize);
+                calculatedSize = true;
+            }
+
             for (let r = 3; r <= 6; r++) {
                 const square = `${file}${r}`;
                 const alpha = (r - 2) / 5; // 2->0, 7->1. range is 5 steps (2,3,4,5,6,7)
