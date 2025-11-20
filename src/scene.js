@@ -58,20 +58,27 @@ export function initGame() {
         // Parse pieces from the model
         let piecesFound = 0;
         gltf.scene.traverse(function (child) {
+            console.log(`Node: '${child.name}', Type: ${child.type}, isMesh: ${child.isMesh}`);
+            if (child.name === 'pPlane1') {
+                console.log('!!! FOUND pPlane1 !!!', child);
+                boardMesh = child; // Force assignment if found, even if not isMesh (though it should be)
+            }
+
             if (child.isMesh && child.name) {
                 const name = child.name.trim();
                 console.log('Processing mesh:', name);
 
                 // Check for board surface
-                if (name === 'pPlane1') {
+                if (name.toLowerCase().includes('plane') || name.toLowerCase().includes('board') || name === 'pPlane1') {
                     const worldPos = new THREE.Vector3();
                     child.getWorldPosition(worldPos);
                     boardY = worldPos.y;
                     boardCenter.copy(worldPos); // Store center
-                    console.log('Found board surface pPlane1 at Y:', boardY, 'Center:', boardCenter);
+                    boardMesh = child; // Save mesh for grid generation
+                    console.log('Found board surface', name, 'at Y:', boardY, 'Center:', boardCenter);
                 }
 
-                // Parse name in format: Color_PieceName_Position
+                // Parse name in format: Color_PieceName_Position or PieceName_Color_Position
                 const parts = name.split('_');
 
                 // Special case: White Queen is named "Mesh016" in the model
@@ -82,14 +89,31 @@ export function initGame() {
                     pieceStr = 'Queen';
                     console.log('Found White Queen at d1 (from Mesh016)');
                 } else if (parts.length >= 3) {
-                    colorStr = parts[0];
-                    if (colorStr.toLowerCase() !== 'white' && colorStr.toLowerCase() !== 'black') {
+                    let colorIndex = -1;
+                    let pieceIndex = -1;
+                    let squareIndex = -1;
+
+                    // Check for Color_Piece_Square format
+                    if (parts[0].toLowerCase() === 'white' || parts[0].toLowerCase() === 'black') {
+                        colorIndex = 0;
+                        pieceIndex = 1;
+                        squareIndex = 2;
+                    }
+                    // Check for Piece_Color_Square format
+                    else if (parts[1] && (parts[1].toLowerCase() === 'white' || parts[1].toLowerCase() === 'black')) {
+                        colorIndex = 1;
+                        pieceIndex = 0;
+                        squareIndex = 2;
+                    }
+
+                    if (colorIndex !== -1) {
+                        colorStr = parts[colorIndex];
+                        pieceStr = parts[pieceIndex];
+                        square = parts[squareIndex].toLowerCase();
+                    } else {
                         console.log('Skipping non-piece object:', name);
                         return;
                     }
-
-                    pieceStr = parts[1];
-                    square = parts[2].toLowerCase();
                 } else {
                     // console.log('Invalid name format:', name);
                     return;
@@ -147,11 +171,14 @@ export let stepRank = 1.0;
 export let stepFile = 1.0;
 export let boardY = 0; // Default, will be updated from pPlane1
 export let pieceYOffset = 0; // Height of pieces above board surface
+export let boardMesh; // Exported for grid generation
 
 let boardCenter = new THREE.Vector3();
 
 function interpolateBoardSquares() {
     const fileMap = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+
+    console.log("=== GRID GENERATION (Corner Calibration) ===");
 
     // First, calculate piece Y offset from any piece
     if (pieces['a2']) {
@@ -161,68 +188,67 @@ function interpolateBoardSquares() {
         console.log(`Piece Y offset above board: ${pieceYOffset.toFixed(3)}`);
     }
 
-    // Use actual piece positions as grid anchors (no interpolation errors)
-    // For each square, if a piece exists there, use its position
-    // Otherwise, interpolate from nearest pieces
+    // Check for Corner Pieces
+    const pA1 = pieces['a1'];
+    const pH1 = pieces['h1'];
+    const pA8 = pieces['a8'];
 
-    console.log("=== GRID GENERATION (Using Piece Anchors) ===");
-
-    // Calculate rank direction vector (from rank 2 to rank 7)
-    if (pieces['a2'] && pieces['a7']) {
-        const posA2 = new THREE.Vector3();
-        const posA7 = new THREE.Vector3();
-        pieces['a2'].getWorldPosition(posA2);
-        pieces['a7'].getWorldPosition(posA7);
-
-        const vRank = new THREE.Vector3().subVectors(posA7, posA2);
-        stepRank = vRank.length() / 5; // 5 squares between rank 2 and 7
-        vRank.normalize();
-
-        console.log(`stepRank: ${stepRank.toFixed(3)}`);
-
-        // For each file (a-h), use the actual rank 2 piece as anchor
-        for (let f = 0; f < 8; f++) {
-            const fileChar = fileMap[f];
-            const anchorSquare = `${fileChar}2`;
-
-            if (pieces[anchorSquare]) {
-                const anchorPos = new THREE.Vector3();
-                pieces[anchorSquare].getWorldPosition(anchorPos);
-
-                // Generate all 8 ranks for this file using the anchor
-                for (let r = 0; r < 8; r++) {
-                    const rankNum = r + 1;
-                    const square = `${fileChar}${rankNum}`;
-
-                    // Position = anchor + vRank * (rank - 2) * stepRank
-                    const pos = anchorPos.clone().add(
-                        vRank.clone().multiplyScalar((r - 1) * stepRank)
-                    );
-                    pos.y = boardY;
-
-                    boardSquares[square] = pos;
-
-                    if (f <= 2 && r <= 3) {
-                        console.log(`  ${square}: (${pos.x.toFixed(3)}, ${pos.y.toFixed(3)}, ${pos.z.toFixed(3)})`);
-                    }
-                }
-            }
-        }
-
-        // Calculate stepFile for use in other modules (average distance between files)
-        if (pieces['a2'] && pieces['b2']) {
-            const posA = new THREE.Vector3();
-            const posB = new THREE.Vector3();
-            pieces['a2'].getWorldPosition(posA);
-            pieces['b2'].getWorldPosition(posB);
-            stepFile = posA.distanceTo(posB);
-            console.log(`stepFile: ${stepFile.toFixed(3)}`);
-        }
-
-        console.log("=== Grid generated using piece anchors ===");
-    } else {
-        console.error("Could not find anchor pieces for grid generation!");
+    if (!pA1 || !pH1 || !pA8) {
+        console.error("Critical: Missing corner pieces (A1, H1, or A8). Cannot calibrate grid.");
+        return;
     }
+
+    const posA1 = new THREE.Vector3();
+    const posH1 = new THREE.Vector3();
+    const posA8 = new THREE.Vector3();
+
+    pA1.getWorldPosition(posA1);
+    pH1.getWorldPosition(posH1);
+    pA8.getWorldPosition(posA8);
+
+    console.log(`Corner Positions: A1(${posA1.x.toFixed(2)}, ${posA1.z.toFixed(2)}) H1(${posH1.x.toFixed(2)}, ${posH1.z.toFixed(2)}) A8(${posA8.x.toFixed(2)}, ${posA8.z.toFixed(2)})`);
+
+    // 1. Calculate File Vector (A1 -> H1)
+    // This vector spans 7 steps (from file 0 to file 7)
+    const vecFileTotal = new THREE.Vector3().subVectors(posH1, posA1);
+    const distFileTotal = vecFileTotal.length();
+    stepFile = distFileTotal / 7;
+    const vFile = vecFileTotal.clone().normalize();
+
+    // 2. Calculate Rank Vector (A1 -> A8)
+    // This vector spans 7 steps (from rank 1 to rank 8)
+    const vecRankTotal = new THREE.Vector3().subVectors(posA8, posA1);
+    const distRankTotal = vecRankTotal.length();
+    stepRank = distRankTotal / 7;
+    const vRank = vecRankTotal.clone().normalize();
+
+    console.log(`Calibration Results:`);
+    console.log(`  stepFile: ${stepFile.toFixed(4)} (Total Dist: ${distFileTotal.toFixed(2)})`);
+    console.log(`  stepRank: ${stepRank.toFixed(4)} (Total Dist: ${distRankTotal.toFixed(2)})`);
+    console.log(`  vFile: (${vFile.x.toFixed(3)}, ${vFile.y.toFixed(3)}, ${vFile.z.toFixed(3)})`);
+    console.log(`  vRank: (${vRank.x.toFixed(3)}, ${vRank.y.toFixed(3)}, ${vRank.z.toFixed(3)})`);
+
+    // 3. Generate Grid
+    // Formula: Pos(f, r) = A1 + (f * stepFile * vFile) + (r * stepRank * vRank)
+    // Where f is 0-7 (File A-H), r is 0-7 (Rank 1-8)
+
+    for (let f = 0; f < 8; f++) {
+        for (let r = 0; r < 8; r++) {
+            const fileChar = fileMap[f];
+            const rankNum = r + 1;
+            const square = `${fileChar}${rankNum}`;
+
+            const fileOffset = vFile.clone().multiplyScalar(f * stepFile);
+            const rankOffset = vRank.clone().multiplyScalar(r * stepRank);
+
+            const pos = posA1.clone().add(fileOffset).add(rankOffset);
+            pos.y = boardY; // Flatten to board height
+
+            boardSquares[square] = pos;
+        }
+    }
+
+    console.log("=== Grid generation complete ===");
 }
 
 function animate() {

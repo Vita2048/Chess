@@ -8,6 +8,7 @@ let camera;
 let scene;
 let selectedSquare = null;
 let highlightedSquares = [];
+let selectedHighlight = null;
 
 export function initInput(cam, sc) {
     camera = cam;
@@ -66,6 +67,7 @@ function handleSquareClick(square) {
                 movePieceVisual(selectedSquare, square);
                 selectedSquare = null;
                 clearHighlights();
+                clearSelected();
 
                 // Trigger AI move
                 const statusDiv = document.getElementById('status');
@@ -104,14 +106,19 @@ function handleSquareClick(square) {
     const piece = game.get(square);
     if (piece && piece.color === game.turn()) {
         selectedSquare = square;
+        highlightSelected(square);
         highlightMoves(square);
     } else {
         selectedSquare = null;
         clearHighlights();
+        clearSelected();
     }
 }
 
 function handleBoardClick(point) {
+    // Project point to board plane
+    point.y = boardY;
+
     let closestSquare = null;
     let minDist = Infinity;
 
@@ -119,7 +126,7 @@ function handleBoardClick(point) {
         const dist = point.distanceTo(pos);
         // Use average step size for tolerance
         const avgStep = (stepRank + stepFile) / 2;
-        if (dist < avgStep * 0.7) {
+        if (dist < avgStep * 0.3) {
             if (dist < minDist) {
                 minDist = dist;
                 closestSquare = sq;
@@ -145,11 +152,11 @@ function highlightMoves(square) {
             const height = avgStep * 0.02;
 
             // BoxGeometry(width, height, depth) = (X, Y, Z)
-            // Board: X=rank direction, Z=file direction
-            // We use stepRank for X and stepFile for Z
-            const geometry = new THREE.BoxGeometry(stepRank * 0.9, height, stepFile * 0.9);
+            // Board: X=file direction, Z=rank direction
+            // We use stepFile for X and stepRank for Z
+            const geometry = new THREE.BoxGeometry(stepFile * 0.95, height, stepRank * 0.95);
 
-            const material = new THREE.MeshBasicMaterial({ color: 0x0000ff, transparent: true, opacity: 0.5 });
+            const material = new THREE.MeshBasicMaterial({ color: 0x0000ff, transparent: true, opacity: 0.6 });
             const mesh = new THREE.Mesh(geometry, material);
             mesh.position.copy(pos);
 
@@ -166,6 +173,33 @@ function highlightMoves(square) {
 function clearHighlights() {
     highlightedSquares.forEach(mesh => scene.remove(mesh));
     highlightedSquares = [];
+}
+
+function highlightSelected(square) {
+    clearSelected();
+    const pos = boardSquares[square];
+    if (pos) {
+        const avgStep = (stepRank + stepFile) / 2;
+        const height = avgStep * 0.02;
+
+        const geometry = new THREE.BoxGeometry(stepFile * 0.95, height, stepRank * 0.95);
+        const material = new THREE.MeshBasicMaterial({ color: 0x0000ff, transparent: true, opacity: 0.8, wireframe: true });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.copy(pos);
+
+        const surfaceY = boardY !== undefined ? boardY : pos.y;
+        mesh.position.y = surfaceY + height / 2 + (avgStep * 0.01);
+
+        scene.add(mesh);
+        selectedHighlight = mesh;
+    }
+}
+
+function clearSelected() {
+    if (selectedHighlight) {
+        scene.remove(selectedHighlight);
+        selectedHighlight = null;
+    }
 }
 
 function movePieceVisual(from, to) {
