@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { pieces, boardSquares, stepRank, stepFile, boardY, pieceYOffset } from './scene.js';
+import { pieces, boardSquares, stepRank, stepFile, boardY, pieceYOffset, boardMesh } from './scene.js';
 import { getMoves, makeMove, game } from './chessLogic.js';
 
 let raycaster;
@@ -138,7 +138,54 @@ function handleBoardClick(point) {
         handleSquareClick(closestSquare);
     }
 }
+function alignHighlightToBoard(mesh) {
+    // Calculate orientation based on the actual grid corners
+    // This ensures alignment even if the board mesh has weird local rotations
+    const a1 = pieces['a1'];
+    const h1 = pieces['h1'];
+    const a8 = pieces['a8'];
 
+    if (!a1 || !h1 || !a8) {
+        // Fallback if pieces aren't loaded yet
+        if (boardMesh) {
+            mesh.rotation.set(0, boardMesh.rotation.y, 0);
+        }
+        return;
+    }
+
+    const pA1 = new THREE.Vector3();
+    const pH1 = new THREE.Vector3();
+    const pA8 = new THREE.Vector3();
+
+    a1.getWorldPosition(pA1);
+    h1.getWorldPosition(pH1);
+    a8.getWorldPosition(pA8);
+
+    // 1. Define our target local axes based on the BoxGeometry dimensions
+    // Geometry is: width = stepRank, depth = stepFile
+    // So Local X should align with Rank direction (a1 -> a8)
+    // So Local Z should align with File direction (a1 -> h1)
+
+    const targetX = new THREE.Vector3().subVectors(pA8, pA1).normalize(); // Rank direction
+    const targetZ = new THREE.Vector3().subVectors(pH1, pA1).normalize(); // File direction
+
+    // 2. Calculate the normal (Up vector)
+    // Z cross X = Y (Right-handed coordinate system)
+    const targetY = new THREE.Vector3().crossVectors(targetZ, targetX).normalize();
+
+    // 3. Re-orthogonalize to ensure a perfect rotation matrix
+    // We keep Y (Up) and X (Rank) as primary, recalculate Z (File)
+    // or keep X and Z and recalculate Y? 
+    // Let's trust the Up vector derived from the cross product, and recalculate Z to be perfectly perpendicular to X and Y
+    const correctedZ = new THREE.Vector3().crossVectors(targetX, targetY).normalize();
+
+    // 4. Create rotation matrix
+    const rotationMatrix = new THREE.Matrix4();
+    rotationMatrix.makeBasis(targetX, targetY, correctedZ);
+
+    // 5. Apply rotation
+    mesh.setRotationFromMatrix(rotationMatrix);
+}
 function highlightMoves(square) {
     clearHighlights();
     const moves = getMoves(square);
@@ -147,32 +194,23 @@ function highlightMoves(square) {
         const targetSquare = move.to;
         const pos = boardSquares[targetSquare];
         if (pos) {
-            // Make height proportional to step size (thin tile)
             const avgStep = (stepRank + stepFile) / 2;
             const height = avgStep * 0.02;
 
-            // BoxGeometry(width, height, depth) = (X, Y, Z)
-            // Board: X=file direction, Z=rank direction
-            // We use stepFile for X and stepRank for Z
-            const geometry = new THREE.BoxGeometry(stepFile * 0.95, height, stepRank * 0.95);
-
+            const geometry = new THREE.BoxGeometry(stepRank * 0.95, height, stepFile * 0.95);
             const material = new THREE.MeshBasicMaterial({ color: 0x0000ff, transparent: true, opacity: 0.6 });
             const mesh = new THREE.Mesh(geometry, material);
             mesh.position.copy(pos);
 
-            // Position just above the board surface (half height + small offset)
             const surfaceY = boardY !== undefined ? boardY : pos.y;
-            mesh.position.y = surfaceY + height / 2 + (avgStep * 0.01);
+            mesh.position.y = surfaceY + height / 2 + avgStep * 0.01;
+
+            alignHighlightToBoard(mesh);  // ← CORRECT ORIENTATION
 
             scene.add(mesh);
             highlightedSquares.push(mesh);
         }
     });
-}
-
-function clearHighlights() {
-    highlightedSquares.forEach(mesh => scene.remove(mesh));
-    highlightedSquares = [];
 }
 
 function highlightSelected(square) {
@@ -182,18 +220,26 @@ function highlightSelected(square) {
         const avgStep = (stepRank + stepFile) / 2;
         const height = avgStep * 0.02;
 
-        const geometry = new THREE.BoxGeometry(stepFile * 0.95, height, stepRank * 0.95);
+        const geometry = new THREE.BoxGeometry(stepRank * 0.95, height, stepFile * 0.95);
         const material = new THREE.MeshBasicMaterial({ color: 0x0000ff, transparent: true, opacity: 0.8, wireframe: true });
         const mesh = new THREE.Mesh(geometry, material);
         mesh.position.copy(pos);
 
         const surfaceY = boardY !== undefined ? boardY : pos.y;
-        mesh.position.y = surfaceY + height / 2 + (avgStep * 0.01);
+        mesh.position.y = surfaceY + height / 2 + avgStep * 0.01;
+
+        alignHighlightToBoard(mesh);  // ← NOW FIXED!
 
         scene.add(mesh);
         selectedHighlight = mesh;
     }
 }
+function clearHighlights() {
+    highlightedSquares.forEach(mesh => scene.remove(mesh));
+    highlightedSquares = [];
+}
+
+
 
 function clearSelected() {
     if (selectedHighlight) {
