@@ -67,54 +67,64 @@ export function initGame() {
                     const worldPos = new THREE.Vector3();
                     child.getWorldPosition(worldPos);
                     boardY = worldPos.y;
-                    console.log('Found board surface pPlane1 at Y:', boardY);
+                    boardCenter.copy(worldPos); // Store center
+                    console.log('Found board surface pPlane1 at Y:', boardY, 'Center:', boardCenter);
                 }
 
                 // Parse name in format: Color_PieceName_Position
                 const parts = name.split('_');
-                if (parts.length >= 3) {
-                    const colorStr = parts[0];
+
+                // Special case: White Queen is named "Mesh016" in the model
+                let square, colorStr, pieceStr;
+                if (name === 'Mesh016') { // Exact match to avoid duplicates with Mesh016_1
+                    square = 'd1';
+                    colorStr = 'White';
+                    pieceStr = 'Queen';
+                    console.log('Found White Queen at d1 (from Mesh016)');
+                } else if (parts.length >= 3) {
+                    colorStr = parts[0];
                     if (colorStr.toLowerCase() !== 'white' && colorStr.toLowerCase() !== 'black') {
                         console.log('Skipping non-piece object:', name);
                         return;
                     }
 
-                    const pieceStr = parts[1];
-                    const square = parts[2].toLowerCase();
-
-                    let color = colorStr.toLowerCase() === 'white' ? 'w' : 'b';
-                    let type;
-
-                    const lowerPiece = pieceStr.toLowerCase();
-                    if (lowerPiece === 'pawn') type = 'p';
-                    else if (lowerPiece === 'rook') type = 'r';
-                    else if (lowerPiece === 'knight') type = 'n';
-                    else if (lowerPiece === 'bishop') type = 'b';
-                    else if (lowerPiece === 'queen') type = 'q';
-                    else if (lowerPiece === 'king') type = 'k';
-                    else {
-                        console.log('Unknown piece type:', pieceStr);
-                        return;
-                    }
-
-                    // Store metadata
-                    child.userData.square = square;
-                    child.userData.color = color;
-                    child.userData.type = type;
-
-                    // Save to pieces map
-                    pieces[square] = child;
-                    piecesFound++;
-
-                    // Save board position
-                    const worldPos = new THREE.Vector3();
-                    child.getWorldPosition(worldPos);
-                    boardSquares[square] = worldPos.clone();
-
-                    console.log(`Found ${colorStr} ${pieceStr} at ${square}`);
+                    pieceStr = parts[1];
+                    square = parts[2].toLowerCase();
                 } else {
-                    console.log('Invalid name format:', name);
+                    // console.log('Invalid name format:', name);
+                    return;
                 }
+
+                let color = colorStr.toLowerCase() === 'white' ? 'w' : 'b';
+                let type;
+
+                const lowerPiece = pieceStr.toLowerCase();
+                if (lowerPiece === 'pawn') type = 'p';
+                else if (lowerPiece === 'rook') type = 'r';
+                else if (lowerPiece === 'knight') type = 'n';
+                else if (lowerPiece === 'bishop') type = 'b';
+                else if (lowerPiece === 'queen') type = 'q';
+                else if (lowerPiece === 'king') type = 'k';
+                else {
+                    console.log('Unknown piece type:', pieceStr);
+                    return;
+                }
+
+                // Store metadata
+                child.userData.square = square;
+                child.userData.color = color;
+                child.userData.type = type;
+
+                // Save to pieces map
+                pieces[square] = child;
+                piecesFound++;
+
+                // Save board position
+                const worldPos = new THREE.Vector3();
+                child.getWorldPosition(worldPos);
+                boardSquares[square] = worldPos.clone();
+
+                console.log(`Found ${colorStr} ${pieceStr} at ${square}`);
             }
         });
 
@@ -133,50 +143,86 @@ export function initGame() {
     });
 }
 
-export let squareSize = 1.0; // Default, will be updated
+export let stepRank = 1.0;
+export let stepFile = 1.0;
 export let boardY = 0; // Default, will be updated from pPlane1
+export let pieceYOffset = 0; // Height of pieces above board surface
+
+let boardCenter = new THREE.Vector3();
 
 function interpolateBoardSquares() {
     const fileMap = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 
-    // We need at least some anchors.
-    // We expect pieces at ranks 1, 2, 7, 8.
-    // We can interpolate ranks 3, 4, 5, 6.
-
-    let calculatedSize = false;
-
-    for (let f = 0; f < 8; f++) {
-        const file = fileMap[f];
-        const p2 = boardSquares[`${file}2`]; // White Pawn
-        const p7 = boardSquares[`${file}7`]; // Black Pawn
-
-        if (p2 && p7) {
-            // Calculate square size if not yet done
-            if (!calculatedSize) {
-                const dist = p2.distanceTo(p7);
-                squareSize = dist / 5; // 5 squares between rank 2 and 7
-                console.log("Calculated square size:", squareSize);
-                calculatedSize = true;
-            }
-
-            for (let r = 3; r <= 6; r++) {
-                const square = `${file}${r}`;
-                const alpha = (r - 2) / 5; // 2->0, 7->1. range is 5 steps (2,3,4,5,6,7)
-                // Wait, 2 to 7 is 5 steps:
-                // r=3: (3-2)/5 = 0.2
-                // r=4: (4-2)/5 = 0.4
-                // ...
-                // r=7: (7-2)/5 = 1.0 -> Correct.
-
-                const pos = new THREE.Vector3().lerpVectors(p2, p7, alpha);
-                boardSquares[square] = pos;
-            }
-        }
+    // First, calculate piece Y offset from any piece
+    if (pieces['a2']) {
+        const pos = new THREE.Vector3();
+        pieces['a2'].getWorldPosition(pos);
+        pieceYOffset = pos.y - boardY;
+        console.log(`Piece Y offset above board: ${pieceYOffset.toFixed(3)}`);
     }
 
-    // Also interpolate rank 1 and 8 if missing (unlikely if pieces are there)
-    // But what if we want to be robust?
-    // Let's assume standard board layout.
+    // Use actual piece positions as grid anchors (no interpolation errors)
+    // For each square, if a piece exists there, use its position
+    // Otherwise, interpolate from nearest pieces
+
+    console.log("=== GRID GENERATION (Using Piece Anchors) ===");
+
+    // Calculate rank direction vector (from rank 2 to rank 7)
+    if (pieces['a2'] && pieces['a7']) {
+        const posA2 = new THREE.Vector3();
+        const posA7 = new THREE.Vector3();
+        pieces['a2'].getWorldPosition(posA2);
+        pieces['a7'].getWorldPosition(posA7);
+
+        const vRank = new THREE.Vector3().subVectors(posA7, posA2);
+        stepRank = vRank.length() / 5; // 5 squares between rank 2 and 7
+        vRank.normalize();
+
+        console.log(`stepRank: ${stepRank.toFixed(3)}`);
+
+        // For each file (a-h), use the actual rank 2 piece as anchor
+        for (let f = 0; f < 8; f++) {
+            const fileChar = fileMap[f];
+            const anchorSquare = `${fileChar}2`;
+
+            if (pieces[anchorSquare]) {
+                const anchorPos = new THREE.Vector3();
+                pieces[anchorSquare].getWorldPosition(anchorPos);
+
+                // Generate all 8 ranks for this file using the anchor
+                for (let r = 0; r < 8; r++) {
+                    const rankNum = r + 1;
+                    const square = `${fileChar}${rankNum}`;
+
+                    // Position = anchor + vRank * (rank - 2) * stepRank
+                    const pos = anchorPos.clone().add(
+                        vRank.clone().multiplyScalar((r - 1) * stepRank)
+                    );
+                    pos.y = boardY;
+
+                    boardSquares[square] = pos;
+
+                    if (f <= 2 && r <= 3) {
+                        console.log(`  ${square}: (${pos.x.toFixed(3)}, ${pos.y.toFixed(3)}, ${pos.z.toFixed(3)})`);
+                    }
+                }
+            }
+        }
+
+        // Calculate stepFile for use in other modules (average distance between files)
+        if (pieces['a2'] && pieces['b2']) {
+            const posA = new THREE.Vector3();
+            const posB = new THREE.Vector3();
+            pieces['a2'].getWorldPosition(posA);
+            pieces['b2'].getWorldPosition(posB);
+            stepFile = posA.distanceTo(posB);
+            console.log(`stepFile: ${stepFile.toFixed(3)}`);
+        }
+
+        console.log("=== Grid generated using piece anchors ===");
+    } else {
+        console.error("Could not find anchor pieces for grid generation!");
+    }
 }
 
 function animate() {

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { pieces, boardSquares, squareSize, boardY } from './scene.js';
+import { pieces, boardSquares, stepRank, stepFile, boardY, pieceYOffset } from './scene.js';
 import { getMoves, makeMove, game } from './chessLogic.js';
 
 let raycaster;
@@ -35,7 +35,7 @@ function onMouseClick(event) {
 
         let pieceRoot = clickedObject;
         while (pieceRoot.parent && pieceRoot.parent !== scene && !pieceRoot.userData.square) {
-            console.log("Traversing up to:", pieceRoot.parent.name, "Has square?", !!pieceRoot.parent.userData.square);
+            // console.log("Traversing up to:", pieceRoot.parent.name, "Has square?", !!pieceRoot.parent.userData.square);
             pieceRoot = pieceRoot.parent;
         }
 
@@ -117,8 +117,9 @@ function handleBoardClick(point) {
 
     for (const [sq, pos] of Object.entries(boardSquares)) {
         const dist = point.distanceTo(pos);
-        // Use squareSize for tolerance, slightly larger than half diagonal
-        if (dist < squareSize * 0.7) {
+        // Use average step size for tolerance
+        const avgStep = (stepRank + stepFile) / 2;
+        if (dist < avgStep * 0.7) {
             if (dist < minDist) {
                 minDist = dist;
                 closestSquare = sq;
@@ -139,16 +140,23 @@ function highlightMoves(square) {
         const targetSquare = move.to;
         const pos = boardSquares[targetSquare];
         if (pos) {
-            // Make height proportional to square size (thin tile)
-            const height = squareSize * 0.02;
-            const geometry = new THREE.BoxGeometry(squareSize, height, squareSize);
+            // Make height proportional to step size (thin tile)
+            const avgStep = (stepRank + stepFile) / 2;
+            const height = avgStep * 0.02;
+
+            // BoxGeometry(width, height, depth) = (X, Y, Z)
+            // Board: X=rank direction, Z=file direction
+            // We use stepRank for X and stepFile for Z
+            const geometry = new THREE.BoxGeometry(stepRank * 0.9, height, stepFile * 0.9);
+
             const material = new THREE.MeshBasicMaterial({ color: 0x0000ff, transparent: true, opacity: 0.5 });
             const mesh = new THREE.Mesh(geometry, material);
             mesh.position.copy(pos);
+
             // Position just above the board surface (half height + small offset)
-            // Use boardY if available, otherwise fallback to pos.y (which might be piece center)
             const surfaceY = boardY !== undefined ? boardY : pos.y;
-            mesh.position.y = surfaceY + height / 2 + (squareSize * 0.01);
+            mesh.position.y = surfaceY + height / 2 + (avgStep * 0.01);
+
             scene.add(mesh);
             highlightedSquares.push(mesh);
         }
@@ -169,7 +177,10 @@ function movePieceVisual(from, to) {
             scene.remove(pieces[to]);
         }
 
-        pieceObj.position.copy(targetPos);
+        // Preserve piece height above board
+        pieceObj.position.x = targetPos.x;
+        pieceObj.position.z = targetPos.z;
+        pieceObj.position.y = boardY + pieceYOffset;
 
         pieces[to] = pieceObj;
         delete pieces[from];
