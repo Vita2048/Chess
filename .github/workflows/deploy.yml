@@ -3,9 +3,7 @@ name: Build and Deploy to GitHub Pages
 on:
   push:
     branches: [ main ]
-
-      workflow_dispatch:  # This enables manual runs
-    inputs: {}  # Optional: Add custom inputs here if needed
+  workflow_dispatch:   # This enables manual runs from the Actions tab
 
 permissions:
   contents: read
@@ -40,11 +38,12 @@ jobs:
           path: ./dist
 
   deploy:
+    needs: build
+    runs-on: ubuntu-latest   # ← Fixed: was "github-pages" (invalid runner)
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: github-pages
-    needs: build
+
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
