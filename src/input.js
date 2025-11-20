@@ -211,10 +211,48 @@ function movePieceVisual(from, to) {
             scene.remove(pieces[to]);
         }
 
-        // Preserve piece height above board
-        pieceObj.position.x = targetPos.x;
-        pieceObj.position.z = targetPos.z;
-        pieceObj.position.y = boardY + pieceYOffset;
+        console.log(`Moving ${from} to ${to}`);
+
+        const startWorld = new THREE.Vector3();
+        pieceObj.getWorldPosition(startWorld);
+        console.log(`Start World Pos: ${startWorld.x.toFixed(3)}, ${startWorld.y.toFixed(3)}, ${startWorld.z.toFixed(3)}`);
+        console.log(`Target Grid Pos: ${targetPos.x.toFixed(3)}, ${targetPos.y.toFixed(3)}, ${targetPos.z.toFixed(3)}`);
+
+        // Calculate target World Position
+        const worldTarget = new THREE.Vector3(
+            targetPos.x,
+            boardY + pieceYOffset,
+            targetPos.z
+        );
+        console.log(`Calculated World Target: ${worldTarget.x.toFixed(3)}, ${worldTarget.y.toFixed(3)}, ${worldTarget.z.toFixed(3)}`);
+
+        // Attach piece to Scene to ensure it shares the same coordinate space as the boardSquares/rectangles
+        // This handles any parent transforms (scale/rotation) automatically
+        scene.attach(pieceObj);
+
+        // Set initial position
+        pieceObj.position.copy(worldTarget);
+
+        // Center the piece in the cell by adjusting based on its bounding box
+        pieceObj.updateMatrixWorld(true);
+        const bbox = new THREE.Box3().setFromObject(pieceObj);
+        const currentCenter = new THREE.Vector3();
+        bbox.getCenter(currentCenter);
+
+        // Offset to move the center to the target position horizontally
+        const offset = worldTarget.clone().sub(currentCenter);
+        offset.y = 0; // Keep Y for now
+        pieceObj.position.add(offset);
+
+        // Adjust Y so the bottom of the piece is on the board surface
+        pieceObj.updateMatrixWorld(true);
+        const updatedBbox = new THREE.Box3().setFromObject(pieceObj);
+        pieceObj.position.y += boardY - updatedBbox.min.y;
+
+        pieceObj.updateMatrixWorld(true); // Force update to check result
+        const endWorld = new THREE.Vector3();
+        pieceObj.getWorldPosition(endWorld);
+        console.log(`End World Pos: ${endWorld.x.toFixed(3)}, ${endWorld.y.toFixed(3)}, ${endWorld.z.toFixed(3)}`);
 
         pieces[to] = pieceObj;
         delete pieces[from];
