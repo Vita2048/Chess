@@ -133,16 +133,32 @@ export function initGame() {
         const ambient = new THREE.AmbientLight(0xffffff, 0.6);
         scene.add(ambient);
 
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        dirLight.position.set(10, 20, 10);
-        dirLight.castShadow = true;
-        dirLight.shadow.mapSize.width = 2048;
-        dirLight.shadow.mapSize.height = 2048;
-        scene.add(dirLight);
+scene.add(new THREE.AmbientLight(0xffffff, 0.9));
 
-        const fillLight = new THREE.PointLight(0xffffff, 0.4, 50);
-        fillLight.position.set(-10, 15, -10);
+        const keyLight = new THREE.DirectionalLight(0xffffff, 1.8);
+        keyLight.position.set(boardCenter.x + 6, boardCenter.y + 15, boardCenter.z + 10);
+        keyLight.castShadow = true;
+        keyLight.shadow.mapSize.width = 2048;
+        keyLight.shadow.mapSize.height = 2048;
+        keyLight.shadow.camera.near = 0.5;
+        keyLight.shadow.camera.far = 50;
+        keyLight.shadow.camera.left = -15;
+        keyLight.shadow.camera.right = 15;
+        keyLight.shadow.camera.top = 15;
+        keyLight.shadow.camera.bottom = -15;
+        scene.add(keyLight);
+
+        const fillLight = new THREE.DirectionalLight(0xffffff, 0.7);
+        fillLight.position.set(boardCenter.x - 8, boardCenter.y + 12, boardCenter.z - 8);
         scene.add(fillLight);
+
+        const topLight = new THREE.DirectionalLight(0xffffff, 0.6);
+        topLight.position.set(boardCenter.x, boardCenter.y + 25, boardCenter.z);
+        scene.add(topLight);
+
+        const rimLight = new THREE.DirectionalLight(0xffffff, 0.4);
+        rimLight.position.set(boardCenter.x + 5, boardCenter.y + 10, boardCenter.z - 15);
+        scene.add(rimLight);
 
         // === Final camera positioning ===
         camera.position.set(boardCenter.x, boardCenter.y + 12, boardCenter.z + 12);
