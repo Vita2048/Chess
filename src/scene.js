@@ -37,7 +37,7 @@ export function initGame() {
     controls.maxPolarAngle = Math.PI / 2;
 
     const loader = new GLTFLoader();
-    loader.load('/models/chess-set_FULL.glb', function (gltf) {
+    loader.load('./models/chess-set_FULL.glb', function (gltf) {
         const model = gltf.scene;
 
         // === CRUCIAL FIX: Correct the 45° rotation from Blender ===
