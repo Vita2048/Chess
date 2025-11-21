@@ -37,7 +37,7 @@ export function initGame() {
     controls.maxPolarAngle = Math.PI / 2;
 
     const loader = new GLTFLoader();
-    loader.load('/models/chess-set_FULL.glb', function (gltf) {
+    loader.load('/models/ChessSetCorrectQueen.glb', function (gltf) {
         const model = gltf.scene;
 
         // === CRUCIAL FIX: Correct the 45° rotation from Blender ===
@@ -133,7 +133,7 @@ export function initGame() {
         const ambient = new THREE.AmbientLight(0xffffff, 0.6);
         scene.add(ambient);
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+        scene.add(new THREE.AmbientLight(0xffffff, 0.9));
 
         const keyLight = new THREE.DirectionalLight(0xffffff, 1.8);
         keyLight.position.set(boardCenter.x + 6, boardCenter.y + 15, boardCenter.z + 10);
@@ -192,18 +192,18 @@ function calibrateBoardGrid() {
     const a8 = pos('a8');
 
     // File direction: a1 → h1
-    const fileVec = new THREE.Vector3().subVectors(h1, a1).multiplyScalar(1/7);
+    const fileVec = new THREE.Vector3().subVectors(h1, a1).multiplyScalar(1 / 7);
     stepFile = fileVec.length();
 
     // Rank direction: a1 → a8
-    const rankVec = new THREE.Vector3().subVectors(a8, a1).multiplyScalar(1/7);
+    const rankVec = new THREE.Vector3().subVectors(a8, a1).multiplyScalar(1 / 7);
     stepRank = rankVec.length();
 
-    const files = ['a','b','c','d','e','f','g','h'];
+    const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
     for (let f = 0; f < 8; f++) {
         for (let r = 1; r <= 8; r++) {
             const sq = files[f] + r;
-            const offset = fileVec.clone().multiplyScalar(f).add(rankVec.clone().multiplyScalar(r-1));
+            const offset = fileVec.clone().multiplyScalar(f).add(rankVec.clone().multiplyScalar(r - 1));
             const worldPos = a1.clone().add(offset);
             worldPos.y = boardY; // snap to board height
             boardSquares[sq] = worldPos;

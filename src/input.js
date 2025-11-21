@@ -55,11 +55,20 @@ function handleSquareClick(square) {
     console.log("Clicked square:", square);
 
     if (selectedSquare) {
+        // Check for promotion
+        const piece = game.get(selectedSquare);
+        const isPawn = piece && piece.type === 'p';
+        const targetRank = square[1];
+        const isPromotion = isPawn && (targetRank === '1' || targetRank === '8');
+
         const move = {
             from: selectedSquare,
             to: square,
-            promotion: 'q'
         };
+
+        if (isPromotion) {
+            move.promotion = 'q'; // Always promote to queen for now
+        }
 
         try {
             const result = makeMove(move);
@@ -68,6 +77,9 @@ function handleSquareClick(square) {
                 selectedSquare = null;
                 clearHighlights();
                 clearSelected();
+
+                // Check if User ended the game
+                if (checkGameOver()) return;
 
                 // Trigger AI move
                 const statusDiv = document.getElementById('status');
@@ -80,17 +92,11 @@ function handleSquareClick(square) {
                             makeMove(bestMove);
                             movePieceVisual(bestMove.from, bestMove.to);
                             if (statusDiv) statusDiv.innerText = "White's Turn";
-
-                            // Check game over
-                            if (game.isGameOver()) {
-                                if (game.in_checkmate()) {
-                                    statusDiv.innerText = "Checkmate! " + (game.turn() === 'w' ? "Black" : "White") + " Wins!";
-                                } else if (game.in_draw()) {
-                                    statusDiv.innerText = "Draw!";
-                                } else {
-                                    statusDiv.innerText = "Game Over";
-                                }
-                                alert(statusDiv.innerText);
+                            checkGameOver();
+                        } else {
+                            // AI has no moves? Check game over again
+                            if (!checkGameOver()) {
+                                console.error("AI returned no move but game is not over?");
                             }
                         }
                     });
@@ -99,7 +105,8 @@ function handleSquareClick(square) {
             }
         } catch (e) {
             // Invalid move
-            console.log("Invalid move", e);
+            console.warn("Invalid move attempt:", move);
+            console.error("Move error details:", e);
         }
     }
 
@@ -113,6 +120,25 @@ function handleSquareClick(square) {
         clearHighlights();
         clearSelected();
     }
+}
+
+function checkGameOver() {
+    const statusDiv = document.getElementById('status');
+    if (game.isGameOver()) {
+        if (game.in_checkmate()) {
+            const winner = game.turn() === 'w' ? "Black" : "White";
+            if (statusDiv) statusDiv.innerText = `Checkmate! ${winner} Wins!`;
+            alert(`Checkmate! ${winner} Wins!`);
+        } else if (game.in_draw()) {
+            if (statusDiv) statusDiv.innerText = "Draw!";
+            alert("Draw!");
+        } else {
+            if (statusDiv) statusDiv.innerText = "Game Over";
+            alert("Game Over");
+        }
+        return true;
+    }
+    return false;
 }
 
 function handleBoardClick(point) {
@@ -254,7 +280,8 @@ function movePieceVisual(from, to) {
 
     if (pieceObj && targetPos) {
         if (pieces[to]) {
-            scene.remove(pieces[to]);
+            // Correctly remove the captured piece from its parent (Scene or GLTF Model)
+            pieces[to].removeFromParent();
         }
 
         console.log(`Moving ${from} to ${to}`);

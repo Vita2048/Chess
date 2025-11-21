@@ -145,28 +145,13 @@ export function getBestMove() {
 function minimaxRoot(depth, isMaximizingPlayer) {
     const newGameMoves = game.moves({ verbose: true });
     let bestMove = -9999;
-    let bestMoveFound;
+    let bestMoveFound = undefined;
 
     // Shuffle moves to add randomness if scores are equal
     newGameMoves.sort(() => Math.random() - 0.5);
 
-    for (let i = 0; i < newGameMoves.length; i++) {
-        const newGameMove = newGameMoves[i];
-        game.move(newGameMove);
-        const value = minimax(depth - 1, -10000, 10000, !isMaximizingPlayer);
-        game.undo();
-
-        if (isMaximizingPlayer) {
-            if (value >= bestMove) {
-                bestMove = value;
-                bestMoveFound = newGameMove;
-            }
-        } else {
-            // If minimizing (Black), we want the lowest score
-            // Wait, my logic above: bestMove init to -9999.
-            // If Black, we should init to +9999 and look for <=.
-        }
-    }
+    // Shuffle moves to add randomness if scores are equal
+    newGameMoves.sort(() => Math.random() - 0.5);
 
     // Refactor to handle both sides properly
     if (isMaximizingPlayer) {
