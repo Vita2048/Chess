@@ -67,47 +67,16 @@ function handleSquareClick(square) {
         };
 
         if (isPromotion) {
-            move.promotion = 'q'; // Always promote to queen for now
+            // Show promotion dialog and wait for user input
+            showPromotionDialog((promotionPiece) => {
+                move.promotion = promotionPiece;
+                executeMove(move);
+            });
+            return; // Stop here, wait for callback
         }
 
-        try {
-            const result = makeMove(move);
-            if (result) {
-                movePieceVisual(selectedSquare, square);
-                selectedSquare = null;
-                clearHighlights();
-                clearSelected();
-
-                // Check if User ended the game
-                if (checkGameOver()) return;
-
-                // Trigger AI move
-                const statusDiv = document.getElementById('status');
-                if (statusDiv) statusDiv.innerText = "Computer is thinking...";
-
-                setTimeout(() => {
-                    import('./ai.js').then(module => {
-                        const bestMove = module.getBestMove();
-                        if (bestMove) {
-                            makeMove(bestMove);
-                            movePieceVisual(bestMove.from, bestMove.to);
-                            if (statusDiv) statusDiv.innerText = "White's Turn";
-                            checkGameOver();
-                        } else {
-                            // AI has no moves? Check game over again
-                            if (!checkGameOver()) {
-                                console.error("AI returned no move but game is not over?");
-                            }
-                        }
-                    });
-                }, 100);
-                return;
-            }
-        } catch (e) {
-            // Invalid move
-            console.warn("Invalid move attempt:", move);
-            console.error("Move error details:", e);
-        }
+        // Normal move
+        executeMove(move);
     }
 
     const piece = game.get(square);
@@ -122,14 +91,73 @@ function handleSquareClick(square) {
     }
 }
 
+function showPromotionDialog(callback) {
+    const modal = document.getElementById('promotion-modal');
+    modal.classList.remove('hidden');
+
+    const buttons = modal.querySelectorAll('button');
+    const handler = (event) => {
+        const piece = event.target.getAttribute('data-piece');
+        if (piece) {
+            modal.classList.add('hidden');
+            // Remove listeners to prevent duplicates
+            buttons.forEach(btn => btn.removeEventListener('click', handler));
+            callback(piece);
+        }
+    };
+
+    buttons.forEach(btn => btn.addEventListener('click', handler));
+}
+
+function executeMove(move) {
+    try {
+        const result = makeMove(move);
+        if (result) {
+            movePieceVisual(move.from, move.to, move.promotion);
+            selectedSquare = null;
+            clearHighlights();
+            clearSelected();
+
+            // Check if User ended the game
+            if (checkGameOver()) return;
+
+            // Trigger AI move
+            const statusDiv = document.getElementById('status');
+            if (statusDiv) statusDiv.innerText = "Computer is thinking...";
+
+            setTimeout(() => {
+                import('./ai.js').then(module => {
+                    const bestMove = module.getBestMove();
+                    if (bestMove) {
+                        makeMove(bestMove);
+                        movePieceVisual(bestMove.from, bestMove.to, bestMove.promotion);
+                        if (statusDiv) statusDiv.innerText = "White's Turn";
+                        checkGameOver();
+                    } else {
+                        // AI has no moves? Check game over again
+                        if (!checkGameOver()) {
+                            console.error("AI returned no move but game is not over?");
+                        }
+                    }
+                });
+            }, 100);
+            return;
+        }
+    } catch (e) {
+        // Invalid move
+        console.warn("Invalid move attempt:", move);
+        console.error("Move error details:", e);
+    }
+}
+
 function checkGameOver() {
     const statusDiv = document.getElementById('status');
     if (game.isGameOver()) {
-        if (game.in_checkmate()) {
+        if (game.isCheckmate()) {
             const winner = game.turn() === 'w' ? "Black" : "White";
             if (statusDiv) statusDiv.innerText = `Checkmate! ${winner} Wins!`;
             alert(`Checkmate! ${winner} Wins!`);
-        } else if (game.in_draw()) {
+        } else if (game.isDraw()) {
             if (statusDiv) statusDiv.innerText = "Draw!";
             alert("Draw!");
         } else {
@@ -274,7 +302,7 @@ function clearSelected() {
     }
 }
 
-function movePieceVisual(from, to) {
+function movePieceVisual(from, to, promotionType) {
     const pieceObj = pieces[from];
     const targetPos = boardSquares[to];
 
@@ -288,8 +316,6 @@ function movePieceVisual(from, to) {
 
         const startWorld = new THREE.Vector3();
         pieceObj.getWorldPosition(startWorld);
-        console.log(`Start World Pos: ${startWorld.x.toFixed(3)}, ${startWorld.y.toFixed(3)}, ${startWorld.z.toFixed(3)}`);
-        console.log(`Target Grid Pos: ${targetPos.x.toFixed(3)}, ${targetPos.y.toFixed(3)}, ${targetPos.z.toFixed(3)}`);
 
         // Calculate target World Position
         const worldTarget = new THREE.Vector3(
@@ -297,10 +323,8 @@ function movePieceVisual(from, to) {
             boardY + pieceYOffset,
             targetPos.z
         );
-        console.log(`Calculated World Target: ${worldTarget.x.toFixed(3)}, ${worldTarget.y.toFixed(3)}, ${worldTarget.z.toFixed(3)}`);
 
         // Attach piece to Scene to ensure it shares the same coordinate space as the boardSquares/rectangles
-        // This handles any parent transforms (scale/rotation) automatically
         scene.attach(pieceObj);
 
         // Set initial position
@@ -322,13 +346,55 @@ function movePieceVisual(from, to) {
         const updatedBbox = new THREE.Box3().setFromObject(pieceObj);
         pieceObj.position.y += boardY - updatedBbox.min.y;
 
-        pieceObj.updateMatrixWorld(true); // Force update to check result
-        const endWorld = new THREE.Vector3();
-        pieceObj.getWorldPosition(endWorld);
-        console.log(`End World Pos: ${endWorld.x.toFixed(3)}, ${endWorld.y.toFixed(3)}, ${endWorld.z.toFixed(3)}`);
-
         pieces[to] = pieceObj;
         delete pieces[from];
         pieceObj.userData.square = to;
+
+        // Handle Promotion Visuals
+        if (promotionType) {
+            console.log(`Promoting to ${promotionType}`);
+            const color = pieceObj.userData.color;
+
+            // Find a template piece to clone
+            let template = null;
+            for (const key in pieces) {
+                const p = pieces[key];
+                if (p.userData.type === promotionType && p.userData.color === color) {
+                    template = p;
+                    break;
+                }
+            }
+
+            if (template) {
+                const newPiece = template.clone();
+                scene.add(newPiece);
+
+                // Copy position and rotation
+                newPiece.position.copy(pieceObj.position);
+                newPiece.rotation.copy(pieceObj.rotation);
+                newPiece.scale.copy(pieceObj.scale); // Ensure scale is preserved
+
+                newPiece.userData = { ...pieceObj.userData, type: promotionType };
+                newPiece.userData.square = to;
+
+                // Remove the pawn
+                pieceObj.removeFromParent();
+
+                // Update pieces reference
+                pieces[to] = newPiece;
+
+                // Ensure shadows are enabled for the new piece
+                newPiece.traverse((child) => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+            } else {
+                console.warn(`Could not find template for promotion to ${promotionType}`);
+                // Fallback: Just keep the pawn but change its type in userData (visuals will be wrong but game continues)
+                pieceObj.userData.type = promotionType;
+            }
+        }
     }
 }
