@@ -314,6 +314,63 @@ function calibrateBoardGrid() {
     console.log("Board grid calibrated successfully");
 }
 
+export function syncBoardVisuals(gameBoard) {
+    // 1. Remove all existing pieces from scene
+    for (const sq in pieces) {
+        if (pieces[sq]) {
+            // Fix: Remove from parent (could be scene OR model)
+            if (pieces[sq].parent) {
+                pieces[sq].parent.remove(pieces[sq]);
+            }
+            delete pieces[sq];
+        }
+    }
+
+    // 2. Iterate through the game board (8x8 array)
+    // gameBoard is array of rows (0=Rank 8, 7=Rank 1)
+    const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+
+    for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+            const piece = gameBoard[r][c];
+            if (piece) {
+                const rank = 8 - r; // Row 0 is Rank 8
+                const file = files[c];
+                const square = file + rank;
+
+                const key = piece.color + '_' + piece.type;
+                const template = pieceTemplates[key];
+
+                if (template && boardSquares[square]) {
+                    const newPiece = template.clone();
+                    scene.add(newPiece);
+
+                    // Position logic
+                    const targetPos = boardSquares[square];
+                    newPiece.position.set(targetPos.x, boardY, targetPos.z);
+
+                    // Adjust Y based on bounding box
+                    newPiece.updateMatrixWorld(true);
+                    const bbox = new THREE.Box3().setFromObject(newPiece);
+                    const heightAdjustment = boardY - bbox.min.y;
+                    newPiece.position.y += heightAdjustment;
+
+                    newPiece.userData = { square, color: piece.color, type: piece.type };
+                    pieces[square] = newPiece;
+
+                    // Enable shadows
+                    newPiece.traverse((child) => {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                        }
+                    });
+                }
+            }
+        }
+    }
+}
+
 function animate() {
     requestAnimationFrame(animate);
     controls.update();

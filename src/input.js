@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { pieces, boardSquares, stepRank, stepFile, boardY, pieceYOffset, boardMesh, pieceTemplates, BOARD_SCALE, BOARD_ROTATION_Y, rankDir, fileDir } from './scene.js';
-import { getMoves, makeMove, game } from './chessLogic.js';
+import { pieces, boardSquares, stepRank, stepFile, boardY, pieceYOffset, boardMesh, pieceTemplates, BOARD_SCALE, BOARD_ROTATION_Y, rankDir, fileDir, syncBoardVisuals } from './scene.js';
+import { getMoves, makeMove, game, resetGame, undoMove, saveGameXML, loadGameXML } from './chessLogic.js';
 
 let raycaster;
 let mouse;
@@ -18,6 +18,67 @@ export function initInput(cam, sc) {
 
     console.log("Input initialized! Click listener attached.");
     window.addEventListener('click', onMouseClick, false);
+
+    initToolbar();
+}
+
+function initToolbar() {
+    document.getElementById('btn-new-game').addEventListener('click', () => {
+        if (confirm("Start a new game? Unsaved progress will be lost.")) {
+            resetGame();
+            syncBoardVisuals(game.board());
+            clearHighlights();
+            clearSelected();
+        }
+    });
+
+    document.getElementById('btn-undo').addEventListener('click', () => {
+        if (game.turn() !== 'w') {
+            alert("You can only undo when it is your turn!");
+            return;
+        }
+        undoMove();
+        syncBoardVisuals(game.board());
+        clearHighlights();
+        clearSelected();
+    });
+
+    document.getElementById('btn-save-game').addEventListener('click', () => {
+        const xml = saveGameXML();
+        const blob = new Blob([xml], { type: 'text/xml' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'chess_game.xml';
+        a.click();
+        URL.revokeObjectURL(url);
+    });
+
+    const fileInput = document.getElementById('file-input');
+    document.getElementById('btn-load-game').addEventListener('click', () => {
+        fileInput.click();
+    });
+
+    fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const xml = e.target.result;
+            if (loadGameXML(xml)) {
+                syncBoardVisuals(game.board());
+                clearHighlights();
+                clearSelected();
+                alert("Game loaded successfully!");
+            } else {
+                alert("Failed to load game. Invalid XML.");
+            }
+        };
+        reader.readAsText(file);
+        // Reset input so same file can be selected again
+        fileInput.value = '';
+    });
 }
 
 function onMouseClick(event) {

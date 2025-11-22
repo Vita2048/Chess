@@ -5,23 +5,20 @@
   <meta charset="UTF-8" />
   <link rel="icon" type="image/svg+xml" href="/vite.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <!DOCTYPE html>
-  <html lang="en">
-
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>3D Chess</title>
-    <link rel="stylesheet" href="./style.css" />
-  </head>
+  <title>3D Chess</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
 
 <body>
   <div id="app"></div>
   <div id="ui-overlay">
     <div id="status">White's Turn</div>
     <div id="controls">
-      <!-- Future controls can go here -->
+      <button id="btn-new-game">New Game</button>
+      <button id="btn-save-game">Save Game</button>
+      <button id="btn-load-game">Load Game</button>
+      <button id="btn-undo">Undo</button>
+      <input type="file" id="file-input" accept=".xml" style="display: none;" />
     </div>
   </div>
   <div id="promotion-modal" class="hidden">
