@@ -58,8 +58,13 @@ export function loadGameXML(xmlString) {
     const fenNode = xmlDoc.getElementsByTagName("fen")[0];
     if (fenNode && fenNode.textContent) {
         const fen = fenNode.textContent;
-        const success = game.load(fen);
-        return success;
+        try {
+            game.load(fen);
+            return true;
+        } catch (e) {
+            console.error("Failed to load FEN:", e);
+            return false;
+        }
     }
     return false;
 }

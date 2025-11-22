@@ -178,6 +178,34 @@ function executeMove(move) {
         const result = makeMove(move);
         if (result) {
             movePieceVisual(move.from, move.to, move.promotion);
+
+            // Check for castling
+            if (result.flags.includes('k') || result.flags.includes('q')) {
+                let rookFrom, rookTo;
+                if (result.color === 'w') {
+                    if (result.flags.includes('k')) { // White Kingside
+                        rookFrom = 'h1';
+                        rookTo = 'f1';
+                    } else if (result.flags.includes('q')) { // White Queenside
+                        rookFrom = 'a1';
+                        rookTo = 'd1';
+                    }
+                } else {
+                    if (result.flags.includes('k')) { // Black Kingside
+                        rookFrom = 'h8';
+                        rookTo = 'f8';
+                    } else if (result.flags.includes('q')) { // Black Queenside
+                        rookFrom = 'a8';
+                        rookTo = 'd8';
+                    }
+                }
+
+                if (rookFrom && rookTo) {
+                    console.log(`Castling detected! Moving rook from ${rookFrom} to ${rookTo}`);
+                    movePieceVisual(rookFrom, rookTo);
+                }
+            }
+
             selectedSquare = null;
             clearHighlights();
             clearSelected();
@@ -193,8 +221,24 @@ function executeMove(move) {
                 import('./ai.js').then(module => {
                     const bestMove = module.getBestMove();
                     if (bestMove) {
-                        makeMove(bestMove);
+                        const result = makeMove(bestMove);
                         movePieceVisual(bestMove.from, bestMove.to, bestMove.promotion);
+
+                        // Check for castling (AI)
+                        if (result && (result.flags.includes('k') || result.flags.includes('q'))) {
+                            let rookFrom, rookTo;
+                            if (result.color === 'w') {
+                                if (result.flags.includes('k')) { rookFrom = 'h1'; rookTo = 'f1'; }
+                                else if (result.flags.includes('q')) { rookFrom = 'a1'; rookTo = 'd1'; }
+                            } else {
+                                if (result.flags.includes('k')) { rookFrom = 'h8'; rookTo = 'f8'; }
+                                else if (result.flags.includes('q')) { rookFrom = 'a8'; rookTo = 'd8'; }
+                            }
+                            if (rookFrom && rookTo) {
+                                movePieceVisual(rookFrom, rookTo);
+                            }
+                        }
+
                         if (statusDiv) statusDiv.innerText = "White's Turn";
                         checkGameOver();
                     } else {
