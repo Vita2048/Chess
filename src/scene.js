@@ -134,6 +134,9 @@ export function initGame() {
                 // Reset position temporarily to measure
                 clone.position.set(0, 0, 0);
 
+                // CRITICAL FIX: Clear userData from the inner mesh
+                clone.userData = {};
+
                 // Update matrix to ensure bounding box is correct in local space
                 clone.updateMatrixWorld(true);
                 const box = new THREE.Box3().setFromObject(clone);
