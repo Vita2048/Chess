@@ -487,26 +487,119 @@ function movePieceVisual(from, to, promotionType, animate = false) {
 
 function animatePieceMove(pieceObj, targetPos, callback) {
     const startPos = pieceObj.position.clone();
-    const duration = 1250; // 1.25 seconds animation (20% slower)
+    const duration = 1625; // 1.625 seconds animation (30% slower)
     const startTime = Date.now();
 
-    // Add subtle blue glow light (focus on piece outline)
-    const glowLight = new THREE.PointLight(0x001122, 1.5, 15);
-    glowLight.position.copy(startPos);
-    scene.add(glowLight);
+    // === ENHANCED MULTI-LAYER GLOW SYSTEM ===
 
-    // Make piece emissive for outline glow effect
-    let originalEmissive = null;
-    let originalEmissiveIntensity = null;
+    // 1. Bright central core light (intense white-blue)
+    const coreLight = new THREE.PointLight(0x5588cc, 4.0, 12);
+    coreLight.position.copy(startPos);
+    scene.add(coreLight);
+
+    // 2. Mid-range blue glow
+    const midGlow = new THREE.PointLight(0x2255aa, 2.5, 18);
+    midGlow.position.copy(startPos);
+    scene.add(midGlow);
+
+    // 3. Outer soft blue aura
+    const outerGlow = new THREE.PointLight(0x002266, 1.5, 25);
+    outerGlow.position.copy(startPos);
+    scene.add(outerGlow);
+
+    // 4. Create glowing sphere around the piece (inner glow)
+    const innerGlowGeometry = new THREE.SphereGeometry(0.8, 16, 16);
+    const innerGlowMaterial = new THREE.MeshBasicMaterial({
+        color: 0x4488bb,
+        transparent: true,
+        opacity: 0.2,
+        side: THREE.BackSide
+    });
+    const innerGlowSphere = new THREE.Mesh(innerGlowGeometry, innerGlowMaterial);
+    innerGlowSphere.position.copy(startPos);
+    scene.add(innerGlowSphere);
+
+    // 5. Create outer radial glow sphere
+    const outerGlowGeometry = new THREE.SphereGeometry(1.5, 16, 16);
+    const outerGlowMaterial = new THREE.MeshBasicMaterial({
+        color: 0x113388,
+        transparent: true,
+        opacity: 0.1,
+        side: THREE.BackSide
+    });
+    const outerGlowSphere = new THREE.Mesh(outerGlowGeometry, outerGlowMaterial);
+    outerGlowSphere.position.copy(startPos);
+    scene.add(outerGlowSphere);
+
+    // 6. Create radial light rays effect (star burst)
+    const raysMaterial = new THREE.ShaderMaterial({
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        uniforms: {
+            time: { value: 0 },
+            opacity: { value: 0.3 }
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform float time;
+            uniform float opacity;
+            varying vec2 vUv;
+            void main() {
+                vec2 center = vec2(0.5, 0.5);
+                vec2 toCenter = vUv - center;
+                float dist = length(toCenter);
+                float angle = atan(toCenter.y, toCenter.x);
+                
+                // Create radial rays
+                float rays = abs(sin(angle * 8.0 + time * 3.0));
+                rays = pow(rays, 3.0);
+                
+                // Fade from center
+                float radialFade = 1.0 - smoothstep(0.0, 0.5, dist);
+                
+                // Bright blue color
+                vec3 color = vec3(0.15, 0.35, 0.7);
+                float alpha = rays * radialFade * opacity;
+                
+                gl_FragColor = vec4(color, alpha);
+            }
+        `
+    });
+
+    const raysGeometry = new THREE.PlaneGeometry(3, 3);
+    const raysMesh = new THREE.Mesh(raysGeometry, raysMaterial);
+    raysMesh.position.copy(startPos);
+    raysMesh.position.y += 0.1; // Slightly above board
+    raysMesh.rotation.x = -Math.PI / 2; // Lay flat
+    scene.add(raysMesh);
+
+    // Make piece highly emissive for intense glow
+    // IMPORTANT: Clone materials first to avoid affecting all pieces of the same type
+    let originalMaterials = [];
     pieceObj.traverse((child) => {
         if (child.isMesh && child.material) {
-            if (!originalEmissive) {
-                originalEmissive = child.material.emissive ? child.material.emissive.clone() : new THREE.Color(0x000000);
-                originalEmissiveIntensity = child.material.emissiveIntensity || 1.0;
+            // Store original material
+            originalMaterials.push({
+                mesh: child,
+                material: child.material
+            });
+
+            // Clone the material so we don't affect other pieces
+            child.material = child.material.clone();
+
+            // Apply intense blue emissive glow to the cloned material
+            child.material.emissive = new THREE.Color(0x114488);
+            child.material.emissiveIntensity = 1.75;
+            if (child.material.color) {
+                child.material.color = new THREE.Color(0x5588bb);
             }
-            // Create strong outline glow effect
-            child.material.emissive = new THREE.Color(0x004477);
-            child.material.emissiveIntensity = 2.0;
             child.material.needsUpdate = true;
         }
     });
@@ -515,18 +608,43 @@ function animatePieceMove(pieceObj, targetPos, callback) {
         const elapsed = Date.now() - startTime;
         const progress = Math.min(elapsed / duration, 1);
 
-        // Smooth easing
-        const easeProgress = 1 - Math.pow(1 - progress, 3);
+        // Smooth easing with slight bounce at end
+        const easeProgress = progress < 0.5
+            ? 4 * progress * progress * progress
+            : 1 - Math.pow(-2 * progress + 2, 3) / 2;
 
+        // Move piece
         pieceObj.position.lerpVectors(startPos, targetPos, easeProgress);
-        glowLight.position.copy(pieceObj.position);
 
-        // Make glow flashing - pulse the light intensity and emissive outline glow
-        const flashIntensity = 1 + 0.8 * Math.sin(progress * Math.PI * 4); // Flash 2 times during animation
-        glowLight.intensity = 1.5 * flashIntensity;
+        // Update all glow elements to follow piece
+        coreLight.position.copy(pieceObj.position);
+        midGlow.position.copy(pieceObj.position);
+        outerGlow.position.copy(pieceObj.position);
+        innerGlowSphere.position.copy(pieceObj.position);
+        outerGlowSphere.position.copy(pieceObj.position);
+        raysMesh.position.copy(pieceObj.position);
+        raysMesh.position.y += 0.1;
 
-        // Pulse the emissive intensity for outline glow effect
-        const emissivePulse = 2.0 + 1.5 * Math.sin(progress * Math.PI * 4);
+        // Pulsing intensity (faster, more dramatic)
+        const pulse = Math.sin(progress * Math.PI * 6); // 3 full pulses
+        const intensityMultiplier = 1.0 + pulse * 0.5;
+
+        coreLight.intensity = 4.0 * intensityMultiplier;
+        midGlow.intensity = 2.5 * intensityMultiplier;
+        outerGlow.intensity = 1.5 * intensityMultiplier;
+
+        // Pulsing glow spheres
+        const sphereScale = 1.0 + pulse * 0.3;
+        innerGlowSphere.scale.setScalar(sphereScale);
+        outerGlowSphere.scale.setScalar(sphereScale * 0.9);
+
+        // Rotate rays for dynamic effect
+        raysMesh.rotation.z += 0.02;
+        raysMaterial.uniforms.time.value = progress * 10;
+        raysMaterial.uniforms.opacity.value = 0.3 * (1.0 - progress * 0.3);
+
+        // Pulse piece emissive
+        const emissivePulse = 1.75 + pulse * 0.75;
         pieceObj.traverse((child) => {
             if (child.isMesh && child.material) {
                 child.material.emissiveIntensity = emissivePulse;
@@ -537,15 +655,20 @@ function animatePieceMove(pieceObj, targetPos, callback) {
         if (progress < 1) {
             requestAnimationFrame(animate);
         } else {
-            // Remove glow
-            scene.remove(glowLight);
-            pieceObj.traverse((child) => {
-                if (child.isMesh && child.material) {
-                    child.material.emissive = originalEmissive;
-                    child.material.emissiveIntensity = originalEmissiveIntensity;
-                    child.material.needsUpdate = true;
-                }
+            // Cleanup - remove all glow effects
+            scene.remove(coreLight);
+            scene.remove(midGlow);
+            scene.remove(outerGlow);
+            scene.remove(innerGlowSphere);
+            scene.remove(outerGlowSphere);
+            scene.remove(raysMesh);
+
+            // Restore original materials
+            originalMaterials.forEach(({ mesh, material }) => {
+                mesh.material = material;
+                mesh.material.needsUpdate = true;
             });
+
             callback();
         }
     }
