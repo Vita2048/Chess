@@ -73,7 +73,80 @@ body {
 }
 
 .promotion-options button:hover {
-  background: #666;
+   background: #666;
+ }
+
+/* New Game Modal */
+#new-game-modal {
+   position: fixed;
+   top: 0;
+   left: 0;
+   width: 100%;
+   height: 100%;
+   background: rgba(0, 0, 0, 0.7);
+   display: flex;
+   justify-content: center;
+   align-items: center;
+   z-index: 1000;
+   pointer-events: auto;
+}
+
+#new-game-modal.hidden {
+   display: none;
+}
+
+.modal-buttons {
+   display: flex;
+   gap: 1rem;
+   margin-top: 1rem;
+   justify-content: center;
+}
+
+.modal-buttons button {
+   padding: 0.8rem 1.5rem;
+   font-size: 1rem;
+   cursor: pointer;
+   background: #4a4a4a;
+   color: white;
+   border: none;
+   border-radius: 6px;
+   transition: background 0.2s;
+}
+
+.modal-buttons button:hover {
+   background: #666;
+}
+
+/* Game Over Overlay */
+#game-over-overlay {
+   position: fixed;
+   top: 0;
+   left: 0;
+   width: 100%;
+   height: 100%;
+   background: rgba(0, 0, 0, 0.8);
+   display: flex;
+   justify-content: center;
+   align-items: center;
+   z-index: 1001;
+   pointer-events: none;
+}
+
+#game-over-overlay.hidden {
+   display: none;
+}
+
+#game-over-message {
+   font-size: 3rem;
+   font-weight: bold;
+   color: white;
+   text-align: center;
+   animation: flash 1s infinite;
+}
+
+@keyframes flash {
+   0%, 50% { opacity: 1; }
+   51%, 100% { opacity: 0; }
 }
 
 /* Toolbar Controls */

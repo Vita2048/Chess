@@ -24,12 +24,7 @@ export function initInput(cam, sc) {
 
 function initToolbar() {
     document.getElementById('btn-new-game').addEventListener('click', () => {
-        if (confirm("Start a new game? Unsaved progress will be lost.")) {
-            resetGame();
-            syncBoardVisuals(game.board());
-            clearHighlights();
-            clearSelected();
-        }
+        showNewGameModal();
     });
 
     document.getElementById('btn-undo').addEventListener('click', () => {
@@ -169,6 +164,45 @@ function showPromotionDialog(callback) {
     buttons.forEach(btn => btn.addEventListener('click', handler));
 }
 
+function showNewGameModal() {
+    const modal = document.getElementById('new-game-modal');
+    modal.classList.remove('hidden');
+
+    const yesBtn = document.getElementById('new-game-yes');
+    const noBtn = document.getElementById('new-game-no');
+
+    const yesHandler = () => {
+        modal.classList.add('hidden');
+        yesBtn.removeEventListener('click', yesHandler);
+        noBtn.removeEventListener('click', noHandler);
+        resetGame();
+        syncBoardVisuals(game.board());
+        clearHighlights();
+        clearSelected();
+    };
+
+    const noHandler = () => {
+        modal.classList.add('hidden');
+        yesBtn.removeEventListener('click', yesHandler);
+        noBtn.removeEventListener('click', noHandler);
+    };
+
+    yesBtn.addEventListener('click', yesHandler);
+    noBtn.addEventListener('click', noHandler);
+}
+
+function showGameOverOverlay(message) {
+    const overlay = document.getElementById('game-over-overlay');
+    const messageDiv = document.getElementById('game-over-message');
+    messageDiv.innerText = message;
+    overlay.classList.remove('hidden');
+
+    // Hide after 5 seconds
+    setTimeout(() => {
+        overlay.classList.add('hidden');
+    }, 5000);
+}
+
 function executeMove(move) {
     console.log("Executing move:", move);
     console.log("Current FEN:", game.fen());
@@ -261,17 +295,17 @@ function executeMove(move) {
 function checkGameOver() {
     const statusDiv = document.getElementById('status');
     if (game.isGameOver()) {
+        let message = "";
         if (game.isCheckmate()) {
             const winner = game.turn() === 'w' ? "Black" : "White";
-            if (statusDiv) statusDiv.innerText = `Checkmate! ${winner} Wins!`;
-            alert(`Checkmate! ${winner} Wins!`);
+            message = `Checkmate! ${winner} Wins!`;
         } else if (game.isDraw()) {
-            if (statusDiv) statusDiv.innerText = "Draw!";
-            alert("Draw!");
+            message = "Draw!";
         } else {
-            if (statusDiv) statusDiv.innerText = "Game Over";
-            alert("Game Over");
+            message = "Game Over";
         }
+        if (statusDiv) statusDiv.innerText = message;
+        showGameOverOverlay(message);
         return true;
     }
     return false;
