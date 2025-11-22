@@ -201,11 +201,14 @@ export function initGame() {
             const type = typeMap[lower];
             if (!type) return;
 
-            child.userData = { square, color, type };
-            pieces[square] = child;
+            // Fix: Use parent group if available (and not the root model) to ensure all sub-meshes are interactive
+            const pieceObject = child.parent && child.parent.type === 'Group' && child.parent !== model ? child.parent : child;
+
+            pieceObject.userData = { square, color, type };
+            pieces[square] = pieceObject;
             piecesFound++;
 
-            createTemplate(color + '_' + type, child);
+            createTemplate(color + '_' + type, pieceObject);
 
             // Store world position
             const pos = new THREE.Vector3();
