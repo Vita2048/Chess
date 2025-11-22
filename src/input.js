@@ -341,28 +341,41 @@ function movePieceVisual(from, to, promotionType) {
             console.log(`Looking for template with key: ${key}`);
             console.log(`Template found:`, template);
             if (template) {
+                console.log("Template transforms:", {
+                    rotation: template.rotation,
+                    scale: template.scale,
+                    type: template.type
+                });
+
                 const newPiece = template.clone();
                 scene.add(newPiece);
 
-                // Copy position
-                newPiece.position.copy(pieceObj.position);
+                // Use targetPos (center of square) instead of pawn's position
+                // This ensures exact centering
+                // Since we normalized the template to have bottom at Y=0, we place it at boardY
+                newPiece.position.set(targetPos.x, boardY, targetPos.z);
 
-                // Apply explicit scale and rotation from the board settings
-                // This ensures the piece matches the GLB's original transform
-                newPiece.scale.set(BOARD_SCALE, BOARD_SCALE, BOARD_SCALE);
-                newPiece.rotation.set(0, THREE.MathUtils.degToRad(BOARD_ROTATION_Y), 0);
+                // Scale and Rotation are now inherited from the template container
+
+                console.log(`[PROMOTION DEBUG]`);
+                console.log(`Target Pos:`, targetPos);
+                console.log(`Board Y:`, boardY);
+                console.log(`Piece Y Offset:`, pieceYOffset);
+                console.log(`Initial NewPiece Pos:`, newPiece.position);
+
+
 
                 console.log(`New piece created. Scale:`, newPiece.scale);
-                console.log(`New piece position (before adjustment):`, newPiece.position);
+                console.log(`New piece rotation:`, newPiece.rotation);
 
                 // Adjust Y so the bottom of the new piece is on the board surface
                 newPiece.updateMatrixWorld(true);
                 const newBbox = new THREE.Box3().setFromObject(newPiece);
-                const heightAdjustment = boardY - newBbox.min.y;
+                const size = new THREE.Vector3();
+                newBbox.getSize(size);
+                console.log(`[DEBUG] New Piece Size:`, size);
 
-                console.log(`[DEBUG] Board Y: ${boardY}`);
-                console.log(`[DEBUG] New Piece BBox Min Y: ${newBbox.min.y}`);
-                console.log(`[DEBUG] Height Adjustment: ${heightAdjustment}`);
+                const heightAdjustment = boardY - newBbox.min.y;
 
                 newPiece.position.y += heightAdjustment;
 

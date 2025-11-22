@@ -103,19 +103,62 @@ export function initGame() {
 
             const name = child.name.trim();
 
+            // Helper to normalize template with relative transform
+            const createTemplate = (key, obj) => {
+                if (pieceTemplates[key]) return;
+
+                console.log(`Storing template for ${key}`);
+
+                // === FIX: Normalize Template with Relative Transform ===
+                const container = new THREE.Group();
+                container.scale.set(BOARD_SCALE, BOARD_SCALE, BOARD_SCALE);
+                container.rotation.y = THREE.MathUtils.degToRad(BOARD_ROTATION_Y);
+
+                // Calculate relative transform (Model -> Piece)
+                obj.updateMatrixWorld(true);
+                model.updateMatrixWorld(true);
+
+                const m1 = model.matrixWorld.clone().invert();
+                const m2 = obj.matrixWorld;
+                const localToModel = m1.multiply(m2);
+
+                const pos = new THREE.Vector3();
+                const quat = new THREE.Quaternion();
+                const scale = new THREE.Vector3();
+                localToModel.decompose(pos, quat, scale);
+
+                const clone = obj.clone();
+                clone.quaternion.copy(quat);
+                clone.scale.copy(scale);
+
+                // Reset position temporarily to measure
+                clone.position.set(0, 0, 0);
+
+                // Update matrix to ensure bounding box is correct in local space
+                clone.updateMatrixWorld(true);
+                const box = new THREE.Box3().setFromObject(clone);
+                const center = new THREE.Vector3();
+                box.getCenter(center);
+
+                // Center X and Z, align Bottom Y to 0
+                clone.position.x = -center.x;
+                clone.position.z = -center.z;
+                clone.position.y = -box.min.y;
+
+                container.add(clone);
+                pieceTemplates[key] = container;
+                console.log(`Template ${key} created. Relative Scale:`, scale, `Offset Fix:`, clone.position);
+            };
+
             // Special case for white queen
             if (name === 'Mesh016') {
-                // Check if it has a parent group (e.g. White_Queen_D1)
                 const pieceObject = child.parent && child.parent.type === 'Group' ? child.parent : child;
 
                 pieceObject.userData = { square: 'd1', color: 'w', type: 'q' };
                 pieces['d1'] = pieceObject;
                 piecesFound++;
 
-                // Store template
-                if (!pieceTemplates['w_q']) {
-                    pieceTemplates['w_q'] = pieceObject.clone();
-                }
+                createTemplate('w_q', pieceObject);
                 return;
             }
 
@@ -125,10 +168,7 @@ export function initGame() {
                 pieces['d8'] = child;
                 piecesFound++;
 
-                // Store template
-                if (!pieceTemplates['b_q']) {
-                    pieceTemplates['b_q'] = child.clone();
-                }
+                createTemplate('b_q', child);
                 return;
             }
 
@@ -162,12 +202,7 @@ export function initGame() {
             pieces[square] = child;
             piecesFound++;
 
-            // Store template if not already stored
-            const key = color + '_' + type;
-            if (!pieceTemplates[key]) {
-                console.log(`Storing template for ${key}`);
-                pieceTemplates[key] = child.clone();
-            }
+            createTemplate(color + '_' + type, child);
 
             // Store world position
             const pos = new THREE.Vector3();
