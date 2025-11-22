@@ -9,6 +9,8 @@ let scene;
 let selectedSquare = null;
 let highlightedSquares = [];
 let selectedHighlight = null;
+let selectedPieceGlow = null;
+let moveHighlightAnimations = [];
 
 export function initInput(cam, sc) {
     camera = cam;
@@ -211,7 +213,9 @@ function executeMove(move) {
     try {
         const result = makeMove(move);
         if (result) {
-            movePieceVisual(move.from, move.to, move.promotion);
+            // Clear selection glow before animating (restore original materials first)
+            clearSelected();
+            movePieceVisual(move.from, move.to, move.promotion, true); // Animate white pieces with blue glow
 
             // Check for castling
             if (result.flags.includes('k') || result.flags.includes('q')) {
@@ -282,7 +286,7 @@ function executeMove(move) {
                         }
                     }
                 });
-            }, 100);
+            }, 1700); // Wait for white piece animation to complete (1625ms + buffer)
             return;
         }
     } catch (e) {
@@ -387,23 +391,29 @@ function highlightMoves(square) {
 
 function highlightSelected(square) {
     clearSelected();
-    const pos = boardSquares[square];
-    if (pos) {
-        const avgStep = (stepRank + stepFile) / 2;
-        const height = avgStep * 0.02;
+    const pieceObj = pieces[square];
 
-        const geometry = new THREE.BoxGeometry(stepRank * 0.95, height, stepFile * 0.95);
-        const material = new THREE.MeshBasicMaterial({ color: 0x0000ff, transparent: true, opacity: 0.8, wireframe: true });
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.position.copy(pos);
+    if (pieceObj) {
+        // === STATIC BLUE GLOW ON SELECTED PIECE (no selection box) ===
+        const originalMaterials = [];
+        pieceObj.traverse((child) => {
+            if (child.isMesh && child.material) {
+                originalMaterials.push({
+                    mesh: child,
+                    material: child.material
+                });
 
-        const surfaceY = boardY !== undefined ? boardY : pos.y;
-        mesh.position.y = surfaceY + height / 2 + avgStep * 0.01;
+                child.material = child.material.clone();
+                child.material.emissive = new THREE.Color(0x114488);
+                child.material.emissiveIntensity = 1.75;
+                if (child.material.color) {
+                    child.material.color = new THREE.Color(0x5588bb);
+                }
+                child.material.needsUpdate = true;
+            }
+        });
 
-        alignHighlightToBoard(mesh);  // ← NOW FIXED!
-
-        scene.add(mesh);
-        selectedHighlight = mesh;
+        selectedPieceGlow = { originalMaterials: originalMaterials };
     }
 }
 function clearHighlights() {
@@ -417,6 +427,14 @@ function clearSelected() {
     if (selectedHighlight) {
         scene.remove(selectedHighlight);
         selectedHighlight = null;
+    }
+
+    if (selectedPieceGlow && selectedPieceGlow.originalMaterials) {
+        selectedPieceGlow.originalMaterials.forEach(({ mesh, material }) => {
+            mesh.material = material;
+            mesh.material.needsUpdate = true;
+        });
+        selectedPieceGlow = null;
     }
 }
 
