@@ -70,7 +70,7 @@ function initToolbar() {
                 syncBoardVisuals(game.board());
                 clearHighlights();
                 clearSelected();
-                alert("Game loaded successfully!");
+                // alert("Game loaded successfully!");
             } else {
                 alert("Failed to load game. Invalid XML.");
             }

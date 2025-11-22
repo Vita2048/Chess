@@ -222,12 +222,12 @@ export function initGame() {
         calibrateBoardGrid();
 
         // === Lighting ===
-        const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+        // Increased ambient light for better overall visibility
+        const ambient = new THREE.AmbientLight(0xffffff, 1.2);
         scene.add(ambient);
 
-        scene.add(new THREE.AmbientLight(0xffffff, 0.9));
-
-        const keyLight = new THREE.DirectionalLight(0xffffff, 1.8);
+        // Stronger key light
+        const keyLight = new THREE.DirectionalLight(0xffffff, 2.0);
         keyLight.position.set(boardCenter.x + 6, boardCenter.y + 15, boardCenter.z + 10);
         keyLight.castShadow = true;
         keyLight.shadow.mapSize.width = 2048;
@@ -240,15 +240,17 @@ export function initGame() {
         keyLight.shadow.camera.bottom = -15;
         scene.add(keyLight);
 
-        const fillLight = new THREE.DirectionalLight(0xffffff, 0.7);
+        // Stronger fill light for black pieces (back/side)
+        const fillLight = new THREE.DirectionalLight(0xffffff, 1.5);
         fillLight.position.set(boardCenter.x - 8, boardCenter.y + 12, boardCenter.z - 8);
         scene.add(fillLight);
 
-        const topLight = new THREE.DirectionalLight(0xffffff, 0.6);
+        const topLight = new THREE.DirectionalLight(0xffffff, 0.8);
         topLight.position.set(boardCenter.x, boardCenter.y + 25, boardCenter.z);
         scene.add(topLight);
 
-        const rimLight = new THREE.DirectionalLight(0xffffff, 0.4);
+        // Stronger rim light
+        const rimLight = new THREE.DirectionalLight(0xffffff, 1.0);
         rimLight.position.set(boardCenter.x + 5, boardCenter.y + 10, boardCenter.z - 15);
         scene.add(rimLight);
 
