@@ -256,7 +256,7 @@ function executeMove(move) {
                     const bestMove = module.getBestMove();
                     if (bestMove) {
                         const result = makeMove(bestMove);
-                        movePieceVisual(bestMove.from, bestMove.to, bestMove.promotion);
+                        movePieceVisual(bestMove.from, bestMove.to, bestMove.promotion, true);
 
                         // Check for castling (AI)
                         if (result && (result.flags.includes('k') || result.flags.includes('q'))) {
@@ -269,7 +269,7 @@ function executeMove(move) {
                                 else if (result.flags.includes('q')) { rookFrom = 'a8'; rookTo = 'd8'; }
                             }
                             if (rookFrom && rookTo) {
-                                movePieceVisual(rookFrom, rookTo);
+                                movePieceVisual(rookFrom, rookTo, null, true);
                             }
                         }
 
@@ -420,7 +420,7 @@ function clearSelected() {
     }
 }
 
-function movePieceVisual(from, to, promotionType) {
+function movePieceVisual(from, to, promotionType, animate = false) {
     const pieceObj = pieces[from];
     const targetPos = boardSquares[to];
 
@@ -445,7 +445,10 @@ function movePieceVisual(from, to, promotionType) {
         // Attach piece to Scene to ensure it shares the same coordinate space as the boardSquares/rectangles
         scene.attach(pieceObj);
 
-        // Set initial position
+        // Store original position for animation
+        const originalPosition = pieceObj.position.clone();
+
+        // Calculate final position by temporarily moving piece
         pieceObj.position.copy(worldTarget);
 
         // Center the piece in the cell by adjusting based on its bounding box
@@ -454,94 +457,180 @@ function movePieceVisual(from, to, promotionType) {
         const currentCenter = new THREE.Vector3();
         bbox.getCenter(currentCenter);
 
-        // Offset to move the center to the target position horizontally
-        const offset = worldTarget.clone().sub(currentCenter);
-        offset.y = 0; // Keep Y for now
-        pieceObj.position.add(offset);
+        // Calculate horizontal offset to center the piece
+        const horizontalOffset = worldTarget.clone().sub(currentCenter);
+        horizontalOffset.y = 0; // Keep Y for now
+        pieceObj.position.add(horizontalOffset);
 
         // Adjust Y so the bottom of the piece is on the board surface
         pieceObj.updateMatrixWorld(true);
         const updatedBbox = new THREE.Box3().setFromObject(pieceObj);
         pieceObj.position.y += boardY - updatedBbox.min.y;
 
-        pieces[to] = pieceObj;
-        delete pieces[from];
-        pieceObj.userData.square = to;
+        // Store the final position
+        const finalPosition = pieceObj.position.clone();
 
-        // Handle Promotion Visuals
-        if (promotionType) {
-            console.log(`Promoting to ${promotionType}`);
-            const color = pieceObj.userData.color;
+        if (animate) {
+            // Reset to original position for animation
+            pieceObj.position.copy(originalPosition);
+            // Animate the move with glow
+            animatePieceMove(pieceObj, finalPosition, () => {
+                finalizeMove(pieceObj, to, from, promotionType, finalPosition);
+            });
+        } else {
+            // Set position immediately
+            pieceObj.position.copy(finalPosition);
+            finalizeMove(pieceObj, to, from, promotionType, finalPosition);
+        }
+    }
+}
 
-            // Use pieceTemplates instead of searching the board
-            const key = color + '_' + promotionType;
-            const template = pieceTemplates[key];
+function animatePieceMove(pieceObj, targetPos, callback) {
+    const startPos = pieceObj.position.clone();
+    const duration = 1250; // 1.25 seconds animation (20% slower)
+    const startTime = Date.now();
 
-            console.log(`Looking for template with key: ${key}`);
-            console.log(`Template found:`, template);
-            if (template) {
-                console.log("Template transforms:", {
-                    rotation: template.rotation,
-                    scale: template.scale,
-                    type: template.type
-                });
+    // Add subtle blue glow light (focus on piece outline)
+    const glowLight = new THREE.PointLight(0x001122, 1.5, 15);
+    glowLight.position.copy(startPos);
+    scene.add(glowLight);
 
-                const newPiece = template.clone();
-                scene.add(newPiece);
-
-                // Use targetPos (center of square) instead of pawn's position
-                // This ensures exact centering
-                // Since we normalized the template to have bottom at Y=0, we place it at boardY
-                newPiece.position.set(targetPos.x, boardY, targetPos.z);
-
-                // Scale and Rotation are now inherited from the template container
-
-                console.log(`[PROMOTION DEBUG]`);
-                console.log(`Target Pos:`, targetPos);
-                console.log(`Board Y:`, boardY);
-                console.log(`Piece Y Offset:`, pieceYOffset);
-                console.log(`Initial NewPiece Pos:`, newPiece.position);
-
-
-
-                console.log(`New piece created. Scale:`, newPiece.scale);
-                console.log(`New piece rotation:`, newPiece.rotation);
-
-                // Adjust Y so the bottom of the new piece is on the board surface
-                newPiece.updateMatrixWorld(true);
-                const newBbox = new THREE.Box3().setFromObject(newPiece);
-                const size = new THREE.Vector3();
-                newBbox.getSize(size);
-                console.log(`[DEBUG] New Piece Size:`, size);
-
-                const heightAdjustment = boardY - newBbox.min.y;
-
-                newPiece.position.y += heightAdjustment;
-
-                console.log(`Final position:`, newPiece.position);
-
-                newPiece.userData = { ...pieceObj.userData, type: promotionType };
-                newPiece.userData.square = to;
-
-                // Remove the pawn
-                pieceObj.removeFromParent();
-
-                // Update pieces reference
-                pieces[to] = newPiece;
-
-                // Ensure shadows are enabled for the new piece
-                newPiece.traverse((child) => {
-                    if (child.isMesh) {
-                        child.castShadow = true;
-                        child.receiveShadow = true;
-                    }
-                });
-            } else {
-                console.warn(`Could not find template for promotion to ${promotionType} (Key: ${key})`);
-                console.warn(`Available templates:`, Object.keys(pieceTemplates));
-                // Fallback: Just keep the pawn but change its type in userData (visuals will be wrong but game continues)
-                pieceObj.userData.type = promotionType;
+    // Make piece emissive for outline glow effect
+    let originalEmissive = null;
+    let originalEmissiveIntensity = null;
+    pieceObj.traverse((child) => {
+        if (child.isMesh && child.material) {
+            if (!originalEmissive) {
+                originalEmissive = child.material.emissive ? child.material.emissive.clone() : new THREE.Color(0x000000);
+                originalEmissiveIntensity = child.material.emissiveIntensity || 1.0;
             }
+            // Create strong outline glow effect
+            child.material.emissive = new THREE.Color(0x004477);
+            child.material.emissiveIntensity = 2.0;
+            child.material.needsUpdate = true;
+        }
+    });
+
+    function animate() {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+
+        // Smooth easing
+        const easeProgress = 1 - Math.pow(1 - progress, 3);
+
+        pieceObj.position.lerpVectors(startPos, targetPos, easeProgress);
+        glowLight.position.copy(pieceObj.position);
+
+        // Make glow flashing - pulse the light intensity and emissive outline glow
+        const flashIntensity = 1 + 0.8 * Math.sin(progress * Math.PI * 4); // Flash 2 times during animation
+        glowLight.intensity = 1.5 * flashIntensity;
+
+        // Pulse the emissive intensity for outline glow effect
+        const emissivePulse = 2.0 + 1.5 * Math.sin(progress * Math.PI * 4);
+        pieceObj.traverse((child) => {
+            if (child.isMesh && child.material) {
+                child.material.emissiveIntensity = emissivePulse;
+                child.material.needsUpdate = true;
+            }
+        });
+
+        if (progress < 1) {
+            requestAnimationFrame(animate);
+        } else {
+            // Remove glow
+            scene.remove(glowLight);
+            pieceObj.traverse((child) => {
+                if (child.isMesh && child.material) {
+                    child.material.emissive = originalEmissive;
+                    child.material.emissiveIntensity = originalEmissiveIntensity;
+                    child.material.needsUpdate = true;
+                }
+            });
+            callback();
+        }
+    }
+
+    animate();
+}
+
+function finalizeMove(pieceObj, to, from, promotionType, finalPosition) {
+    pieces[to] = pieceObj;
+    delete pieces[from];
+    pieceObj.userData.square = to;
+
+    // Handle Promotion Visuals
+    if (promotionType) {
+        console.log(`Promoting to ${promotionType}`);
+        const color = pieceObj.userData.color;
+
+        // Use pieceTemplates instead of searching the board
+        const key = color + '_' + promotionType;
+        const template = pieceTemplates[key];
+
+        console.log(`Looking for template with key: ${key}`);
+        console.log(`Template found:`, template);
+        if (template) {
+            console.log("Template transforms:", {
+                rotation: template.rotation,
+                scale: template.scale,
+                type: template.type
+            });
+
+            const newPiece = template.clone();
+            scene.add(newPiece);
+
+            // Use targetPos (center of square) instead of pawn's position
+            // This ensures exact centering
+            // Since we normalized the template to have bottom at Y=0, we place it at boardY
+            newPiece.position.set(worldTarget.x, boardY, worldTarget.z);
+
+            // Scale and Rotation are now inherited from the template container
+
+            console.log(`[PROMOTION DEBUG]`);
+            console.log(`Target Pos:`, finalPosition);
+            console.log(`Board Y:`, boardY);
+            console.log(`Piece Y Offset:`, pieceYOffset);
+            console.log(`Initial NewPiece Pos:`, newPiece.position);
+
+
+
+            console.log(`New piece created. Scale:`, newPiece.scale);
+            console.log(`New piece rotation:`, newPiece.rotation);
+
+            // Adjust Y so the bottom of the new piece is on the board surface
+            newPiece.updateMatrixWorld(true);
+            const newBbox = new THREE.Box3().setFromObject(newPiece);
+            const size = new THREE.Vector3();
+            newBbox.getSize(size);
+            console.log(`[DEBUG] New Piece Size:`, size);
+
+            const heightAdjustment = boardY - newBbox.min.y;
+
+            newPiece.position.y += heightAdjustment;
+
+            console.log(`Final position:`, newPiece.position);
+
+            newPiece.userData = { ...pieceObj.userData, type: promotionType };
+            newPiece.userData.square = to;
+
+            // Remove the pawn
+            pieceObj.removeFromParent();
+
+            // Update pieces reference
+            pieces[to] = newPiece;
+
+            // Ensure shadows are enabled for the new piece
+            newPiece.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+        } else {
+            console.warn(`Could not find template for promotion to ${promotionType} (Key: ${key})`);
+            console.warn(`Available templates:`, Object.keys(pieceTemplates));
+            // Fallback: Just keep the pawn but change its type in userData (visuals will be wrong but game continues)
+            pieceObj.userData.type = promotionType;
         }
     }
 }
