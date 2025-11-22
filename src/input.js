@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { pieces, boardSquares, stepRank, stepFile, boardY, pieceYOffset, boardMesh } from './scene.js';
+import { pieces, boardSquares, stepRank, stepFile, boardY, pieceYOffset, boardMesh, pieceTemplates } from './scene.js';
 import { getMoves, makeMove, game } from './chessLogic.js';
 
 let raycaster;
@@ -55,18 +55,17 @@ function handleSquareClick(square) {
     console.log("Clicked square:", square);
 
     if (selectedSquare) {
-        // Check for promotion
-        const piece = game.get(selectedSquare);
-        const isPawn = piece && piece.type === 'p';
-        const targetRank = square[1];
-        const isPromotion = isPawn && (targetRank === '1' || targetRank === '8');
+        // Check for promotion using chess.js validation
+        // This ensures we only show the dialog for VALID promotion moves
+        const moves = game.moves({ square: selectedSquare, verbose: true });
+        const promotionMove = moves.find(m => m.to === square && m.promotion);
 
         const move = {
             from: selectedSquare,
             to: square,
         };
 
-        if (isPromotion) {
+        if (promotionMove) {
             // Show promotion dialog and wait for user input
             showPromotionDialog((promotionPiece) => {
                 move.promotion = promotionPiece;
@@ -75,7 +74,7 @@ function handleSquareClick(square) {
             return; // Stop here, wait for callback
         }
 
-        // Normal move
+        // Normal move (or invalid move, executeMove will handle it)
         executeMove(move);
     }
 
@@ -110,6 +109,10 @@ function showPromotionDialog(callback) {
 }
 
 function executeMove(move) {
+    console.log("Executing move:", move);
+    console.log("Current FEN:", game.fen());
+    console.log("Current Turn:", game.turn());
+
     try {
         const result = makeMove(move);
         if (result) {
@@ -355,15 +358,12 @@ function movePieceVisual(from, to, promotionType) {
             console.log(`Promoting to ${promotionType}`);
             const color = pieceObj.userData.color;
 
-            // Find a template piece to clone
-            let template = null;
-            for (const key in pieces) {
-                const p = pieces[key];
-                if (p.userData.type === promotionType && p.userData.color === color) {
-                    template = p;
-                    break;
-                }
-            }
+            // Use pieceTemplates instead of searching the board
+            const key = color + '_' + promotionType;
+            const template = pieceTemplates[key];
+
+            console.log(`Looking for template with key: ${key}`);
+            console.log(`Template found:`, template);
 
             if (template) {
                 const newPiece = template.clone();
@@ -373,6 +373,18 @@ function movePieceVisual(from, to, promotionType) {
                 newPiece.position.copy(pieceObj.position);
                 newPiece.rotation.copy(pieceObj.rotation);
                 newPiece.scale.copy(pieceObj.scale); // Ensure scale is preserved
+
+                console.log(`New piece created. Scale:`, newPiece.scale);
+                console.log(`New piece position (before adjustment):`, newPiece.position);
+
+                // Adjust Y so the bottom of the new piece is on the board surface
+                newPiece.updateMatrixWorld(true);
+                const newBbox = new THREE.Box3().setFromObject(newPiece);
+                const heightAdjustment = boardY - newBbox.min.y;
+                newPiece.position.y += heightAdjustment;
+
+                console.log(`Height adjustment: ${heightAdjustment}`);
+                console.log(`Final position:`, newPiece.position);
 
                 newPiece.userData = { ...pieceObj.userData, type: promotionType };
                 newPiece.userData.square = to;
@@ -391,7 +403,8 @@ function movePieceVisual(from, to, promotionType) {
                     }
                 });
             } else {
-                console.warn(`Could not find template for promotion to ${promotionType}`);
+                console.warn(`Could not find template for promotion to ${promotionType} (Key: ${key})`);
+                console.warn(`Available templates:`, Object.keys(pieceTemplates));
                 // Fallback: Just keep the pawn but change its type in userData (visuals will be wrong but game continues)
                 pieceObj.userData.type = promotionType;
             }

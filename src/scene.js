@@ -6,6 +6,12 @@ import { initInput } from './input.js';
 export let scene, camera, renderer, controls;
 export const pieces = {};
 export const boardSquares = {};
+export const pieceTemplates = {};
+
+// Debugging
+window.pieces = pieces;
+window.boardSquares = boardSquares;
+window.pieceTemplates = pieceTemplates;
 
 export let boardY = 0;
 export let pieceYOffset = 0;
@@ -37,7 +43,7 @@ export function initGame() {
     controls.maxPolarAngle = Math.PI / 2;
 
     const loader = new GLTFLoader();
-    loader.load('/models/ChessSetCorrectQueen.glb', function (gltf) {
+    loader.load('./models/ChessSetCorrectQueen.glb', function (gltf) {
         const model = gltf.scene;
 
         // === CRUCIAL FIX: Correct the 45° rotation from Blender ===
@@ -89,6 +95,24 @@ export function initGame() {
                 child.userData = { square: 'd1', color: 'w', type: 'q' };
                 pieces['d1'] = child;
                 piecesFound++;
+
+                // Store template
+                if (!pieceTemplates['w_q']) {
+                    pieceTemplates['w_q'] = child.clone();
+                }
+                return;
+            }
+
+            // Special case for black queen
+            if (name === 'Mesh017') {
+                child.userData = { square: 'd8', color: 'b', type: 'q' };
+                pieces['d8'] = child;
+                piecesFound++;
+
+                // Store template
+                if (!pieceTemplates['b_q']) {
+                    pieceTemplates['b_q'] = child.clone();
+                }
                 return;
             }
 
@@ -104,6 +128,10 @@ export function initGame() {
                 colorStr = parts[1];
                 pieceStr = parts[0];
                 square = parts[2].toLowerCase();
+            } else if (parts[0] && typeMap[parts[0].toLowerCase()] && parts[1] && (parts[1].toLowerCase() === 'white' || parts[1].toLowerCase() === 'black')) {
+                pieceStr = parts[0];
+                colorStr = parts[1];
+                square = parts[2].toLowerCase();
             } else {
                 return;
             }
@@ -117,6 +145,13 @@ export function initGame() {
             child.userData = { square, color, type };
             pieces[square] = child;
             piecesFound++;
+
+            // Store template if not already stored
+            const key = color + '_' + type;
+            if (!pieceTemplates[key]) {
+                console.log(`Storing template for ${key}`);
+                pieceTemplates[key] = child.clone();
+            }
 
             // Store world position
             const pos = new THREE.Vector3();
