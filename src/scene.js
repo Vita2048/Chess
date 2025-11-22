@@ -204,6 +204,15 @@ export function initGame() {
             // Fix: Use parent group if available (and not the root model) to ensure all sub-meshes are interactive
             const pieceObject = child.parent && child.parent.type === 'Group' && child.parent !== model ? child.parent : child;
 
+            // IMPROVED VISIBILITY: Change material for black pieces
+            if (color === 'b') {
+                child.material = new THREE.MeshStandardMaterial({
+                    color: 0x444444, // Lighter grey instead of black
+                    roughness: 0.5,
+                    metalness: 0.3
+                });
+            }
+
             pieceObject.userData = { square, color, type };
             pieces[square] = pieceObject;
             piecesFound++;
@@ -223,7 +232,7 @@ export function initGame() {
 
         // === Lighting ===
         // Increased ambient light for better overall visibility
-        const ambient = new THREE.AmbientLight(0xffffff, 1.2);
+        const ambient = new THREE.AmbientLight(0xffffff, 1.5);
         scene.add(ambient);
 
         // Stronger key light
@@ -253,6 +262,13 @@ export function initGame() {
         const rimLight = new THREE.DirectionalLight(0xffffff, 1.0);
         rimLight.position.set(boardCenter.x + 5, boardCenter.y + 10, boardCenter.z - 15);
         scene.add(rimLight);
+
+        // New Front Light pointing directly at the board
+        const frontLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        frontLight.position.set(boardCenter.x, boardCenter.y + 15, boardCenter.z + 15);
+        frontLight.target.position.copy(boardCenter);
+        scene.add(frontLight);
+        scene.add(frontLight.target);
 
         // === Final camera positioning ===
         camera.position.set(boardCenter.x, boardCenter.y + 12, boardCenter.z + 12);
