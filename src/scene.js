@@ -19,6 +19,12 @@ export let boardMesh = null;
 export let stepFile = 1.0;
 export let stepRank = 1.0;
 
+export const BOARD_SCALE = 20;
+export const BOARD_ROTATION_Y = -45; // Degrees
+
+export let rankDir = new THREE.Vector3();
+export let fileDir = new THREE.Vector3();
+
 let boardCenter = new THREE.Vector3();
 
 export function initGame() {
@@ -47,16 +53,23 @@ export function initGame() {
         const model = gltf.scene;
 
         // === CRUCIAL FIX: Correct the 45° rotation from Blender ===
-        model.rotation.y = THREE.MathUtils.degToRad(-45);  // Counter-rotate
+        model.rotation.y = THREE.MathUtils.degToRad(BOARD_ROTATION_Y);  // Counter-rotate
         model.updateMatrixWorld();
 
         // Scale (you can tweak this value)
-        model.scale.set(20, 20, 20);
+        model.scale.set(BOARD_SCALE, BOARD_SCALE, BOARD_SCALE);
 
         // Optional: move model down a bit if it's floating
         // model.position.y = -1;
 
         scene.add(model);
+
+        // DEBUG: Log full hierarchy to understand Queen structure
+        console.log("=== MODEL HIERARCHY ===");
+        model.traverse((child) => {
+            console.log(`Name: "${child.name}", Type: ${child.type}, Parent: "${child.parent ? child.parent.name : 'null'}"`);
+        });
+        console.log("=======================");
 
         // Enable shadows
         model.traverse((child) => {
@@ -92,13 +105,16 @@ export function initGame() {
 
             // Special case for white queen
             if (name === 'Mesh016') {
-                child.userData = { square: 'd1', color: 'w', type: 'q' };
-                pieces['d1'] = child;
+                // Check if it has a parent group (e.g. White_Queen_D1)
+                const pieceObject = child.parent && child.parent.type === 'Group' ? child.parent : child;
+
+                pieceObject.userData = { square: 'd1', color: 'w', type: 'q' };
+                pieces['d1'] = pieceObject;
                 piecesFound++;
 
                 // Store template
                 if (!pieceTemplates['w_q']) {
-                    pieceTemplates['w_q'] = child.clone();
+                    pieceTemplates['w_q'] = pieceObject.clone();
                 }
                 return;
             }
@@ -229,10 +245,12 @@ function calibrateBoardGrid() {
     // File direction: a1 → h1
     const fileVec = new THREE.Vector3().subVectors(h1, a1).multiplyScalar(1 / 7);
     stepFile = fileVec.length();
+    fileDir.copy(fileVec).normalize();
 
     // Rank direction: a1 → a8
     const rankVec = new THREE.Vector3().subVectors(a8, a1).multiplyScalar(1 / 7);
     stepRank = rankVec.length();
+    rankDir.copy(rankVec).normalize();
 
     const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
     for (let f = 0; f < 8; f++) {

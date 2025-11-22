@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { pieces, boardSquares, stepRank, stepFile, boardY, pieceYOffset, boardMesh, pieceTemplates } from './scene.js';
+import { pieces, boardSquares, stepRank, stepFile, boardY, pieceYOffset, boardMesh, pieceTemplates, BOARD_SCALE, BOARD_ROTATION_Y, rankDir, fileDir } from './scene.js';
 import { getMoves, makeMove, game } from './chessLogic.js';
 
 let raycaster;
@@ -196,44 +196,20 @@ function handleBoardClick(point) {
     }
 }
 function alignHighlightToBoard(mesh) {
-    // Calculate orientation based on the actual grid corners
-    // This ensures alignment even if the board mesh has weird local rotations
-    const a1 = pieces['a1'];
-    const h1 = pieces['h1'];
-    const a8 = pieces['a8'];
+    // Use the calibrated board vectors from scene.js
+    // This ensures alignment is stable even if pieces move
 
-    if (!a1 || !h1 || !a8) {
-        // Fallback if pieces aren't loaded yet
-        if (boardMesh) {
-            mesh.rotation.set(0, boardMesh.rotation.y, 0);
-        }
-        return;
-    }
-
-    const pA1 = new THREE.Vector3();
-    const pH1 = new THREE.Vector3();
-    const pA8 = new THREE.Vector3();
-
-    a1.getWorldPosition(pA1);
-    h1.getWorldPosition(pH1);
-    a8.getWorldPosition(pA8);
-
-    // 1. Define our target local axes based on the BoxGeometry dimensions
-    // Geometry is: width = stepRank, depth = stepFile
-    // So Local X should align with Rank direction (a1 -> a8)
-    // So Local Z should align with File direction (a1 -> h1)
-
-    const targetX = new THREE.Vector3().subVectors(pA8, pA1).normalize(); // Rank direction
-    const targetZ = new THREE.Vector3().subVectors(pH1, pA1).normalize(); // File direction
+    // 1. Target axes
+    // Local X aligns with Rank direction
+    // Local Z aligns with File direction
+    const targetX = rankDir.clone();
+    const targetZ = fileDir.clone();
 
     // 2. Calculate the normal (Up vector)
     // Z cross X = Y (Right-handed coordinate system)
     const targetY = new THREE.Vector3().crossVectors(targetZ, targetX).normalize();
 
     // 3. Re-orthogonalize to ensure a perfect rotation matrix
-    // We keep Y (Up) and X (Rank) as primary, recalculate Z (File)
-    // or keep X and Z and recalculate Y? 
-    // Let's trust the Up vector derived from the cross product, and recalculate Z to be perfectly perpendicular to X and Y
     const correctedZ = new THREE.Vector3().crossVectors(targetX, targetY).normalize();
 
     // 4. Create rotation matrix
@@ -364,15 +340,17 @@ function movePieceVisual(from, to, promotionType) {
 
             console.log(`Looking for template with key: ${key}`);
             console.log(`Template found:`, template);
-
             if (template) {
                 const newPiece = template.clone();
                 scene.add(newPiece);
 
-                // Copy position and rotation
+                // Copy position
                 newPiece.position.copy(pieceObj.position);
-                newPiece.rotation.copy(pieceObj.rotation);
-                newPiece.scale.copy(pieceObj.scale); // Ensure scale is preserved
+
+                // Apply explicit scale and rotation from the board settings
+                // This ensures the piece matches the GLB's original transform
+                newPiece.scale.set(BOARD_SCALE, BOARD_SCALE, BOARD_SCALE);
+                newPiece.rotation.set(0, THREE.MathUtils.degToRad(BOARD_ROTATION_Y), 0);
 
                 console.log(`New piece created. Scale:`, newPiece.scale);
                 console.log(`New piece position (before adjustment):`, newPiece.position);
@@ -381,9 +359,13 @@ function movePieceVisual(from, to, promotionType) {
                 newPiece.updateMatrixWorld(true);
                 const newBbox = new THREE.Box3().setFromObject(newPiece);
                 const heightAdjustment = boardY - newBbox.min.y;
+
+                console.log(`[DEBUG] Board Y: ${boardY}`);
+                console.log(`[DEBUG] New Piece BBox Min Y: ${newBbox.min.y}`);
+                console.log(`[DEBUG] Height Adjustment: ${heightAdjustment}`);
+
                 newPiece.position.y += heightAdjustment;
 
-                console.log(`Height adjustment: ${heightAdjustment}`);
                 console.log(`Final position:`, newPiece.position);
 
                 newPiece.userData = { ...pieceObj.userData, type: promotionType };
@@ -411,3 +393,4 @@ function movePieceVisual(from, to, promotionType) {
         }
     }
 }
+
