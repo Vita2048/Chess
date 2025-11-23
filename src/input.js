@@ -978,31 +978,59 @@ function animateCapture(pieceObj) {
     });
 
 
-    // === PARTICLE SYSTEM ===
-    const particleCount = 40;
-    const particles = [];
-    const geometry = new THREE.BoxGeometry(0.15, 0.15, 0.15);
+    // === ENHANCED SPARK SYSTEM ===
+    const sparkCount = 120; // Increased count for more density
+    const sparks = [];
+    const sparkGeometry = new THREE.SphereGeometry(0.08, 8, 8); // Use spheres for rounder, more natural sparks
 
-    for (let i = 0; i < particleCount; i++) {
-        // Random fire colors
-        const color = Math.random() > 0.5 ? 0xffaa00 : 0xff4400;
-        const material = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 1 });
+    for (let i = 0; i < sparkCount; i++) {
+        // Varied colors: mix of yellow, orange, red, with some white-hot sparks
+        let color;
+        const rand = Math.random();
+        if (rand < 0.2) color = 0xffffff; // White-hot
+        else if (rand < 0.5) color = 0xffff00; // Yellow
+        else if (rand < 0.8) color = 0xffaa00; // Orange
+        else color = 0xff4400; // Red
 
-        const particle = new THREE.Mesh(geometry, material);
-        particle.position.copy(startPos);
-        // Spread out a bit
-        particle.position.x += (Math.random() - 0.5) * 0.8;
-        particle.position.y += (Math.random() - 0.5) * 1.5; // Taller spread
-        particle.position.z += (Math.random() - 0.5) * 0.8;
+        const material = new THREE.MeshBasicMaterial({
+            color: color,
+            transparent: true,
+            opacity: 1,
+            blending: THREE.AdditiveBlending // For glow effect
+        });
 
+        const spark = new THREE.Mesh(sparkGeometry, material);
+        spark.position.copy(startPos);
+        // Initial spread with more variation
+        spark.position.x += (Math.random() - 0.5) * 1.2;
+        spark.position.y += (Math.random() - 0.5) * 2.0; // Taller initial spread
+        spark.position.z += (Math.random() - 0.5) * 1.2;
+
+        // Varied initial scale for diversity
+        const initialScale = 0.5 + Math.random() * 0.8;
+        spark.scale.setScalar(initialScale);
+
+        // Velocity with more randomness and some outward burst
         const velocity = new THREE.Vector3(
-            (Math.random() - 0.5) * 0.1,
-            Math.random() * 0.1 + 0.05, // Always up
-            (Math.random() - 0.5) * 0.1
+            (Math.random() - 0.5) * 0.15, // Increased horizontal spread
+            Math.random() * 0.12 + 0.08, // Stronger upward bias
+            (Math.random() - 0.5) * 0.15
         );
 
-        scene.add(particle);
-        particles.push({ mesh: particle, velocity: velocity, life: 1.0 + Math.random() });
+        // Add per-spark properties: life, rotation speed, fade rate
+        const life = 1.2 + Math.random() * 0.8; // Varied lifespan
+        const rotSpeed = (Math.random() - 0.5) * 0.2; // Random rotation
+        const gravity = -0.001 - Math.random() * 0.002; // Slight downward pull over time for arcing
+
+        scene.add(spark);
+        sparks.push({
+            mesh: spark,
+            velocity: velocity,
+            life: life,
+            remainingLife: life,
+            rotSpeed: rotSpeed,
+            gravity: gravity
+        });
     }
 
     return new Promise((resolve) => {
@@ -1039,18 +1067,31 @@ function animateCapture(pieceObj) {
                 item.mesh.material.opacity = 1 - ease;
             });
 
-            // 6. Animate particles
-            particles.forEach(p => {
-                if (p.life > 0) {
-                    p.mesh.position.add(p.velocity);
-                    p.velocity.y += 0.002; // Rising acceleration
-                    p.mesh.rotation.x += 0.1;
-                    p.mesh.rotation.y += 0.1;
-                    p.life -= 0.02;
-                    p.mesh.scale.setScalar(p.life);
-                    p.mesh.material.opacity = p.life;
+            // 6. Animate sparks with enhanced details
+            sparks.forEach(s => {
+                if (s.remainingLife > 0) {
+                    // Update velocity with gravity for arcing paths
+                    s.velocity.y += s.gravity;
+
+                    // Move
+                    s.mesh.position.add(s.velocity);
+
+                    // Rotate for tumbling effect
+                    s.mesh.rotation.x += s.rotSpeed;
+                    s.mesh.rotation.y += s.rotSpeed * 0.7;
+
+                    // Scale down over life (fizzle out)
+                    const lifeFraction = s.remainingLife / s.life;
+                    s.mesh.scale.setScalar(lifeFraction * (0.5 + Math.random() * 0.5)); // Add flicker to scale
+
+                    // Fade opacity with flicker
+                    const flicker = 1 + Math.sin(elapsed * 0.02 + Math.random()) * 0.2;
+                    s.mesh.material.opacity = lifeFraction * flicker;
+
+                    // Decrease life
+                    s.remainingLife -= 0.015; // Slightly slower decay for longer visibility
                 } else {
-                    p.mesh.visible = false;
+                    s.mesh.visible = false;
                 }
             });
 
@@ -1068,11 +1109,11 @@ function animateCapture(pieceObj) {
                     item.mesh.geometry.dispose();
                 });
 
-                // Clean up particles
-                particles.forEach(p => {
-                    scene.remove(p.mesh);
-                    p.mesh.geometry.dispose();
-                    p.mesh.material.dispose();
+                // Clean up sparks
+                sparks.forEach(s => {
+                    scene.remove(s.mesh);
+                    s.mesh.geometry.dispose();
+                    s.mesh.material.dispose();
                 });
                 resolve();
             }
