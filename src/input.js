@@ -511,8 +511,9 @@ function movePieceVisual(from, to, promotionType, animate = false) {
 
     if (pieceObj && targetPos) {
         if (pieces[to]) {
-            // Correctly remove the captured piece from its parent (Scene or GLTF Model)
-            pieces[to].removeFromParent();
+            // Trigger capture animation
+            console.log(`Capturing piece at ${to}`);
+            animateCapture(pieces[to]);
         }
 
         console.log(`Moving ${from} to ${to}`);
@@ -790,7 +791,7 @@ function finalizeMove(pieceObj, to, from, promotionType, finalPosition) {
             // Use targetPos (center of square) instead of pawn's position
             // This ensures exact centering
             // Since we normalized the template to have bottom at Y=0, we place it at boardY
-            newPiece.position.set(worldTarget.x, boardY, worldTarget.z);
+            newPiece.position.set(finalPosition.x, boardY, finalPosition.z);
 
             // Scale and Rotation are now inherited from the template container
 
@@ -841,5 +842,216 @@ function finalizeMove(pieceObj, to, from, promotionType, finalPosition) {
             pieceObj.userData.type = promotionType;
         }
     }
+}
+
+function animateCapture(pieceObj) {
+    // 1. Clone materials for transparency
+    const materials = [];
+    pieceObj.traverse((child) => {
+        if (child.isMesh && child.material) {
+            child.material = child.material.clone();
+            child.material.transparent = true;
+            materials.push(child.material);
+        }
+    });
+
+    const startScale = pieceObj.scale.clone();
+    const startPos = pieceObj.position.clone();
+    const startTime = Date.now();
+    const duration = 2000; // Slower animation (2 seconds)
+
+    // === FLAME EFFECT ===
+    // Create a "shell" mesh for the flame effect
+    const flameMeshes = [];
+    const flameMaterial = new THREE.ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        uniforms: {
+            time: { value: 0 },
+            color1: { value: new THREE.Color(0xffaa00) }, // Orange
+            color2: { value: new THREE.Color(0xff2200) }  // Reddish
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            varying vec3 vNormal;
+            void main() {
+                vUv = uv;
+                vNormal = normal;
+                // Expand vertices along normal to create a shell
+                vec3 pos = position + normal * 0.08; 
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform float time;
+            uniform vec3 color1;
+            uniform vec3 color2;
+            varying vec2 vUv;
+            
+            // Simple pseudo-random noise
+            float rand(vec2 n) { 
+                return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
+            }
+
+            float noise(vec2 p){
+                vec2 ip = floor(p);
+                vec2 u = fract(p);
+                u = u*u*(3.0-2.0*u);
+                float res = mix(
+                    mix(rand(ip), rand(ip+vec2(1.0,0.0)), u.x),
+                    mix(rand(ip+vec2(0.0,1.0)), rand(ip+vec2(1.0,1.0)), u.x), u.y);
+                return res;
+            }
+
+            void main() {
+                // Scroll noise upwards
+                float n = noise(vUv * 8.0 + vec2(0.0, -time * 3.0));
+                
+                // Create flame tongues
+                float t = noise(vec2(vUv.x * 10.0, time * 2.0));
+                
+                // Intensity fades at top (vUv.y is usually 0..1)
+                // We assume UV mapping is somewhat vertical. If not, this might look chaotic (which is fine for fire)
+                float alpha = n * smoothstep(0.0, 0.2, t) * (1.0 - vUv.y);
+                
+                vec3 color = mix(color2, color1, n + 0.2);
+                
+                gl_FragColor = vec4(color, alpha * 1.5);
+            }
+        `,
+        side: THREE.DoubleSide
+    });
+
+    pieceObj.traverse((child) => {
+        if (child.isMesh) {
+            const flameMesh = new THREE.Mesh(child.geometry, flameMaterial);
+            flameMesh.position.copy(child.position);
+            flameMesh.rotation.copy(child.rotation);
+            flameMesh.scale.copy(child.scale);
+            // Add to scene, not to pieceObj, so we can control it independently
+            // But we need to sync position manually
+            scene.add(flameMesh);
+            flameMeshes.push({ mesh: flameMesh, offset: child.position.clone() });
+        }
+    });
+
+
+    // === PARTICLE SYSTEM ===
+    const particleCount = 40;
+    const particles = [];
+    const geometry = new THREE.BoxGeometry(0.15, 0.15, 0.15);
+
+    for (let i = 0; i < particleCount; i++) {
+        // Random fire colors
+        const color = Math.random() > 0.5 ? 0xffaa00 : 0xff4400;
+        const material = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 1 });
+
+        const particle = new THREE.Mesh(geometry, material);
+        particle.position.copy(startPos);
+        // Spread out a bit
+        particle.position.x += (Math.random() - 0.5) * 0.8;
+        particle.position.y += (Math.random() - 0.5) * 1.5; // Taller spread
+        particle.position.z += (Math.random() - 0.5) * 0.8;
+
+        const velocity = new THREE.Vector3(
+            (Math.random() - 0.5) * 0.1,
+            Math.random() * 0.1 + 0.05, // Always up
+            (Math.random() - 0.5) * 0.1
+        );
+
+        scene.add(particle);
+        particles.push({ mesh: particle, velocity: velocity, life: 1.0 + Math.random() });
+    }
+
+    function animate() {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+
+        // Ease for scale (slow start, fast finish)
+        const ease = progress * progress;
+
+        // 1. Scale down (Shrink to nothing)
+        const scale = 1 - ease;
+        pieceObj.scale.copy(startScale).multiplyScalar(scale);
+
+        // 2. Rotate (Wobble/Spin)
+        pieceObj.rotation.y += 0.1;
+        pieceObj.rotation.x = Math.sin(elapsed * 0.01) * 0.2; // Wobble
+
+        // 3. Float up slowly
+        pieceObj.position.y = startPos.y + progress * 1.5;
+
+        // 4. Fade out piece
+        const opacity = 1 - progress;
+        materials.forEach(mat => mat.opacity = opacity);
+
+        // 5. Update Flame Shell
+        flameMaterial.uniforms.time.value = elapsed * 0.001;
+        flameMeshes.forEach(item => {
+            // Sync with piece (which is moving/rotating)
+            // Actually, pieceObj is moving, so we just need to copy pieceObj transform?
+            // pieceObj children might have local transforms.
+            // Simplest is to attach flame to scene and copy pieceObj world transform + local offset
+
+            // But pieceObj is scaling. We want flame to scale with it? 
+            // User said "shrinking its size while showing flames".
+            // So flame should shrink too.
+
+            // Let's just copy the pieceObj's current world transform
+            // But pieceObj has children. 
+            // We are iterating pieceObj children.
+
+            // Actually, simpler: Attach flame meshes to the pieceObj?
+            // No, because we want additive blending and maybe different scale logic.
+            // But if we attach to pieceObj, they shrink with it automatically.
+            // Let's try attaching to scene and copying position/rotation/scale.
+
+            item.mesh.position.copy(pieceObj.position).add(item.offset.clone().applyEuler(pieceObj.rotation).multiply(pieceObj.scale));
+            item.mesh.rotation.copy(pieceObj.rotation);
+            item.mesh.scale.copy(pieceObj.scale);
+
+            // Fade flame at the end
+            item.mesh.material.opacity = 1 - ease;
+        });
+
+        // 6. Animate particles
+        particles.forEach(p => {
+            if (p.life > 0) {
+                p.mesh.position.add(p.velocity);
+                p.velocity.y += 0.002; // Rising acceleration
+                p.mesh.rotation.x += 0.1;
+                p.mesh.rotation.y += 0.1;
+                p.life -= 0.02;
+                p.mesh.scale.setScalar(p.life);
+                p.mesh.material.opacity = p.life;
+            } else {
+                p.mesh.visible = false;
+            }
+        });
+
+        if (progress < 1) {
+            requestAnimationFrame(animate);
+        } else {
+            pieceObj.removeFromParent();
+            // Clean up materials
+            materials.forEach(mat => mat.dispose());
+            flameMaterial.dispose();
+
+            // Clean up meshes
+            flameMeshes.forEach(item => {
+                scene.remove(item.mesh);
+                item.mesh.geometry.dispose();
+            });
+
+            // Clean up particles
+            particles.forEach(p => {
+                scene.remove(p.mesh);
+                p.mesh.geometry.dispose();
+                p.mesh.material.dispose();
+            });
+        }
+    }
+    animate();
 }
 
