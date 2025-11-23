@@ -362,30 +362,97 @@ function alignHighlightToBoard(mesh) {
     // 5. Apply rotation
     mesh.setRotationFromMatrix(rotationMatrix);
 }
+const highlightUniforms = {
+    time: { value: 0 }
+};
+
+const highlightMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+        time: { value: 0 }
+    },
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform float time;
+        varying vec2 vUv;
+
+        void main() {
+            vec2 uv = vUv;
+            vec2 center = abs(uv - 0.5);
+            float box = max(center.x, center.y); // Chebyshev = perfect square
+
+            // VERY THICK glowing border (2.5x previous)
+            float inner = 0.32;
+            float outer = 0.50;
+
+            float border = 1.0 - smoothstep(inner, inner + 0.05, box);      // Sharp inner edge
+            border += smoothstep(outer - 0.12, outer, box);                 // Wide soft outer glow
+
+            // Animated flashing energy waves flowing around the edge
+            float wave = sin((box - 0.3) * 25.0 - time * 12.0) * 0.5 + 0.5;
+            float flash = pow(wave, 4.0) * (0.6 + 0.4 * sin(time * 8.0));
+
+            // Dark, intense blue (no more washed-out cyan)
+            vec3 darkBlue   = vec3(0.00, 0.02, 0.18);
+            vec3 midBlue    = vec3(0.00, 0.10, 0.45);
+            vec3 brightBlue = vec3(0.10, 0.35, 0.95);
+            vec3 whiteFlash = vec3(0.70, 0.90, 1.00);
+
+            vec3 color = mix(darkBlue, midBlue, border);
+            color = mix(color, brightBlue, border * 1.2);
+            color = mix(color, whiteFlash, flash * border);
+
+            // Strong pulsing intensity
+            float pulse = 0.7 + 0.3 * sin(time * 10.0);
+            float intensity = (border * 1.8 + flash * 2.5) * pulse;
+
+            // EXTREMELY HIGH alpha → no transparency problems
+            float alpha = intensity * 28.0;
+
+            // Clean cutoff
+            if (box > 0.52) discard;
+
+            gl_FragColor = vec4(color, alpha);
+        }
+    `
+});
+
+export function updateInput(time) {
+    highlightMaterial.uniforms.time.value = time;
+}
+
 function highlightMoves(square) {
     clearHighlights();
     const moves = getMoves(square);
-
     moves.forEach(move => {
         const targetSquare = move.to;
         const pos = boardSquares[targetSquare];
-        if (pos) {
-            const avgStep = (stepRank + stepFile) / 2;
-            const height = avgStep * 0.02;
+        if (!pos) return;
 
-            const geometry = new THREE.BoxGeometry(stepRank * 0.95, height, stepFile * 0.95);
-            const material = new THREE.MeshBasicMaterial({ color: 0x0000ff, transparent: true, opacity: 0.6 });
-            const mesh = new THREE.Mesh(geometry, material);
-            mesh.position.copy(pos);
+        const avgStep = (stepRank + stepFile) / 2;
+        const size = avgStep * 1.22;  // Much larger to show full thick glow
 
-            const surfaceY = boardY !== undefined ? boardY : pos.y;
-            mesh.position.y = surfaceY + height / 2 + avgStep * 0.01;
+        const geometry = new THREE.PlaneGeometry(size, size);
+        const mesh = new THREE.Mesh(geometry, highlightMaterial);
 
-            alignHighlightToBoard(mesh);  // ← CORRECT ORIENTATION
+        mesh.position.copy(pos);
+        const surfaceY = boardY !== undefined ? boardY : pos.y;
+        mesh.position.y = surfaceY + 0.01;  // Higher to avoid z-fighting
 
-            scene.add(mesh);
-            highlightedSquares.push(mesh);
-        }
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(BOARD_ROTATION_Y));
+
+        scene.add(mesh);
+        highlightedSquares.push(mesh);
     });
 }
 

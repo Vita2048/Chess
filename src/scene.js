@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { initInput } from './input.js';
+import { initInput, updateInput } from './input.js';
 
 export let scene, camera, renderer, controls;
 export const pieces = {};
@@ -392,6 +392,10 @@ export function syncBoardVisuals(gameBoard) {
 function animate() {
     requestAnimationFrame(animate);
     controls.update();
+
+    // Update shader uniforms
+    updateInput(Date.now() / 1000);
+
     renderer.render(scene, camera);
 }
 
