@@ -743,13 +743,19 @@ function animatePieceMove(pieceObj, targetPos, callback) {
         // Move piece
         pieceObj.position.lerpVectors(startPos, targetPos, easeProgress);
 
-        // Update all glow elements to follow piece
-        coreLight.position.copy(pieceObj.position);
-        midGlow.position.copy(pieceObj.position);
-        outerGlow.position.copy(pieceObj.position);
-        innerGlowSphere.position.copy(pieceObj.position);
-        outerGlowSphere.position.copy(pieceObj.position);
-        raysMesh.position.copy(pieceObj.position);
+        // Calculate current center of the piece
+        pieceObj.updateMatrixWorld(true);
+        const bbox = new THREE.Box3().setFromObject(pieceObj);
+        const center = new THREE.Vector3();
+        bbox.getCenter(center);
+
+        // Update all glow elements to follow piece center
+        coreLight.position.copy(center);
+        midGlow.position.copy(center);
+        outerGlow.position.copy(center);
+        innerGlowSphere.position.copy(center);
+        outerGlowSphere.position.copy(center);
+        raysMesh.position.copy(center);
         raysMesh.position.y += 0.1;
 
         // Pulsing intensity (faster, more dramatic)
