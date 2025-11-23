@@ -109,7 +109,7 @@ function onMouseClick(event) {
     }
 }
 
-function handleSquareClick(square) {
+async function handleSquareClick(square) {
     console.log("Clicked square:", square);
 
     if (selectedSquare) {
@@ -133,7 +133,8 @@ function handleSquareClick(square) {
         }
 
         // Normal move (or invalid move, executeMove will handle it)
-        executeMove(move);
+        await executeMove(move);
+        return; // Don't continue to piece selection after executing a move
     }
 
     const piece = game.get(square);
@@ -205,7 +206,7 @@ function showGameOverOverlay(message) {
     }, 5000);
 }
 
-function executeMove(move) {
+async function executeMove(move) {
     console.log("Executing move:", move);
     console.log("Current FEN:", game.fen());
     console.log("Current Turn:", game.turn());
@@ -215,7 +216,9 @@ function executeMove(move) {
         if (result) {
             // Clear selection glow before animating (restore original materials first)
             clearSelected();
-            movePieceVisual(move.from, move.to, move.promotion, true); // Animate white pieces with blue glow
+
+            // Wait for move and capture animations to complete
+            await movePieceVisual(move.from, move.to, move.promotion, true);
 
             // Check for castling
             if (result.flags.includes('k') || result.flags.includes('q')) {
@@ -240,7 +243,7 @@ function executeMove(move) {
 
                 if (rookFrom && rookTo) {
                     console.log(`Castling detected! Moving rook from ${rookFrom} to ${rookTo}`);
-                    movePieceVisual(rookFrom, rookTo);
+                    await movePieceVisual(rookFrom, rookTo, null, true);
                 }
             }
 
@@ -249,18 +252,19 @@ function executeMove(move) {
             clearSelected();
 
             // Check if User ended the game
-            if (checkGameOver()) return;
+            if (await checkGameOver()) return;
 
             // Trigger AI move
             const statusDiv = document.getElementById('status');
             if (statusDiv) statusDiv.innerText = "Computer is thinking...";
 
+            // No need for large timeout now, just a small buffer for feel
             setTimeout(() => {
-                import('./ai.js').then(module => {
+                import('./ai.js').then(async module => {
                     const bestMove = module.getBestMove();
                     if (bestMove) {
                         const result = makeMove(bestMove);
-                        movePieceVisual(bestMove.from, bestMove.to, bestMove.promotion, true);
+                        await movePieceVisual(bestMove.from, bestMove.to, bestMove.promotion, true);
 
                         // Check for castling (AI)
                         if (result && (result.flags.includes('k') || result.flags.includes('q'))) {
@@ -273,7 +277,7 @@ function executeMove(move) {
                                 else if (result.flags.includes('q')) { rookFrom = 'a8'; rookTo = 'd8'; }
                             }
                             if (rookFrom && rookTo) {
-                                movePieceVisual(rookFrom, rookTo, null, true);
+                                await movePieceVisual(rookFrom, rookTo, null, true);
                             }
                         }
 
@@ -281,28 +285,57 @@ function executeMove(move) {
                         checkGameOver();
                     } else {
                         // AI has no moves? Check game over again
-                        if (!checkGameOver()) {
+                        if (!await checkGameOver()) {
                             console.error("AI returned no move but game is not over?");
                         }
                     }
                 });
-            }, 1700); // Wait for white piece animation to complete (1625ms + buffer)
+            }, 500);
             return;
+        } else {
+            // Move was invalid (chess.js rejected it)
+            console.warn("Invalid move - chess.js rejected:", move);
+            selectedSquare = null;
+            clearHighlights();
+            clearSelected();
         }
     } catch (e) {
         // Invalid move
         console.warn("Invalid move attempt:", move);
         console.error("Move error details:", e);
+        selectedSquare = null;
+        clearHighlights();
+        clearSelected();
     }
 }
 
-function checkGameOver() {
+async function checkGameOver() {
     const statusDiv = document.getElementById('status');
     if (game.isGameOver()) {
         let message = "";
         if (game.isCheckmate()) {
             const winner = game.turn() === 'w' ? "Black" : "White";
             message = `Checkmate! ${winner} Wins!`;
+
+            // Animate King Perish
+            const loserColor = game.turn(); // 'w' or 'b' (current turn is loser)
+            const kingType = loserColor === 'w' ? 'k' : 'k'; // King type is 'k'
+
+            // Find the King piece
+            let kingSquare = null;
+            for (const sq in pieces) {
+                const piece = pieces[sq];
+                if (piece.userData.type === 'k' && piece.userData.color === loserColor) {
+                    kingSquare = sq;
+                    break;
+                }
+            }
+
+            if (kingSquare && pieces[kingSquare]) {
+                console.log(`Checkmate! Animating King perish at ${kingSquare}`);
+                await animateCapture(pieces[kingSquare]);
+            }
+
         } else if (game.isDraw()) {
             message = "Draw!";
         } else {
@@ -506,69 +539,77 @@ function clearSelected() {
 }
 
 function movePieceVisual(from, to, promotionType, animate = false) {
-    const pieceObj = pieces[from];
-    const targetPos = boardSquares[to];
+    return new Promise((resolve) => {
+        const pieceObj = pieces[from];
+        const targetPos = boardSquares[to];
+        const promises = [];
 
-    if (pieceObj && targetPos) {
-        if (pieces[to]) {
-            // Trigger capture animation
-            console.log(`Capturing piece at ${to}`);
-            animateCapture(pieces[to]);
-        }
+        if (pieceObj && targetPos) {
+            if (pieces[to]) {
+                // Trigger capture animation
+                console.log(`Capturing piece at ${to}`);
+                promises.push(animateCapture(pieces[to]));
+            }
 
-        console.log(`Moving ${from} to ${to}`);
+            console.log(`Moving ${from} to ${to}`);
 
-        const startWorld = new THREE.Vector3();
-        pieceObj.getWorldPosition(startWorld);
+            const startWorld = new THREE.Vector3();
+            pieceObj.getWorldPosition(startWorld);
 
-        // Calculate target World Position
-        const worldTarget = new THREE.Vector3(
-            targetPos.x,
-            boardY + pieceYOffset,
-            targetPos.z
-        );
+            // Calculate target World Position
+            const worldTarget = new THREE.Vector3(
+                targetPos.x,
+                boardY + pieceYOffset,
+                targetPos.z
+            );
 
-        // Attach piece to Scene to ensure it shares the same coordinate space as the boardSquares/rectangles
-        scene.attach(pieceObj);
+            // Attach piece to Scene to ensure it shares the same coordinate space as the boardSquares/rectangles
+            scene.attach(pieceObj);
 
-        // Store original position for animation
-        const originalPosition = pieceObj.position.clone();
+            // Store original position for animation
+            const originalPosition = pieceObj.position.clone();
 
-        // Calculate final position by temporarily moving piece
-        pieceObj.position.copy(worldTarget);
+            // Calculate final position by temporarily moving piece
+            pieceObj.position.copy(worldTarget);
 
-        // Center the piece in the cell by adjusting based on its bounding box
-        pieceObj.updateMatrixWorld(true);
-        const bbox = new THREE.Box3().setFromObject(pieceObj);
-        const currentCenter = new THREE.Vector3();
-        bbox.getCenter(currentCenter);
+            // Center the piece in the cell by adjusting based on its bounding box
+            pieceObj.updateMatrixWorld(true);
+            const bbox = new THREE.Box3().setFromObject(pieceObj);
+            const currentCenter = new THREE.Vector3();
+            bbox.getCenter(currentCenter);
 
-        // Calculate horizontal offset to center the piece
-        const horizontalOffset = worldTarget.clone().sub(currentCenter);
-        horizontalOffset.y = 0; // Keep Y for now
-        pieceObj.position.add(horizontalOffset);
+            // Calculate horizontal offset to center the piece
+            const horizontalOffset = worldTarget.clone().sub(currentCenter);
+            horizontalOffset.y = 0; // Keep Y for now
+            pieceObj.position.add(horizontalOffset);
 
-        // Adjust Y so the bottom of the piece is on the board surface
-        pieceObj.updateMatrixWorld(true);
-        const updatedBbox = new THREE.Box3().setFromObject(pieceObj);
-        pieceObj.position.y += boardY - updatedBbox.min.y;
+            // Adjust Y so the bottom of the piece is on the board surface
+            pieceObj.updateMatrixWorld(true);
+            const updatedBbox = new THREE.Box3().setFromObject(pieceObj);
+            pieceObj.position.y += boardY - updatedBbox.min.y;
 
-        // Store the final position
-        const finalPosition = pieceObj.position.clone();
+            // Store the final position
+            const finalPosition = pieceObj.position.clone();
 
-        if (animate) {
-            // Reset to original position for animation
-            pieceObj.position.copy(originalPosition);
-            // Animate the move with glow
-            animatePieceMove(pieceObj, finalPosition, () => {
+            if (animate) {
+                // Reset to original position for animation
+                pieceObj.position.copy(originalPosition);
+                // Animate the move with glow
+                promises.push(new Promise(r => {
+                    animatePieceMove(pieceObj, finalPosition, () => {
+                        finalizeMove(pieceObj, to, from, promotionType, finalPosition);
+                        r();
+                    });
+                }));
+            } else {
+                // Set position immediately
+                pieceObj.position.copy(finalPosition);
                 finalizeMove(pieceObj, to, from, promotionType, finalPosition);
-            });
-        } else {
-            // Set position immediately
-            pieceObj.position.copy(finalPosition);
-            finalizeMove(pieceObj, to, from, promotionType, finalPosition);
+            }
         }
-    }
+
+        Promise.all(promises).then(() => resolve());
+    });
 }
 
 function animatePieceMove(pieceObj, targetPos, callback) {
@@ -964,94 +1005,78 @@ function animateCapture(pieceObj) {
         particles.push({ mesh: particle, velocity: velocity, life: 1.0 + Math.random() });
     }
 
-    function animate() {
-        const elapsed = Date.now() - startTime;
-        const progress = Math.min(elapsed / duration, 1);
+    return new Promise((resolve) => {
+        function animate() {
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min(elapsed / duration, 1);
 
-        // Ease for scale (slow start, fast finish)
-        const ease = progress * progress;
+            // Ease for scale (slow start, fast finish)
+            const ease = progress * progress;
 
-        // 1. Scale down (Shrink to nothing)
-        const scale = 1 - ease;
-        pieceObj.scale.copy(startScale).multiplyScalar(scale);
+            // 1. Scale down (Shrink to nothing)
+            const scale = 1 - ease;
+            pieceObj.scale.copy(startScale).multiplyScalar(scale);
 
-        // 2. Rotate (Wobble/Spin)
-        pieceObj.rotation.y += 0.1;
-        pieceObj.rotation.x = Math.sin(elapsed * 0.01) * 0.2; // Wobble
+            // 2. Rotate (Wobble/Spin)
+            pieceObj.rotation.y += 0.1;
+            pieceObj.rotation.x = Math.sin(elapsed * 0.01) * 0.2; // Wobble
 
-        // 3. Float up slowly
-        pieceObj.position.y = startPos.y + progress * 1.5;
+            // 3. Float up slowly
+            pieceObj.position.y = startPos.y + progress * 1.5;
 
-        // 4. Fade out piece
-        const opacity = 1 - progress;
-        materials.forEach(mat => mat.opacity = opacity);
+            // 4. Fade out piece
+            const opacity = 1 - progress;
+            materials.forEach(mat => mat.opacity = opacity);
 
-        // 5. Update Flame Shell
-        flameMaterial.uniforms.time.value = elapsed * 0.001;
-        flameMeshes.forEach(item => {
-            // Sync with piece (which is moving/rotating)
-            // Actually, pieceObj is moving, so we just need to copy pieceObj transform?
-            // pieceObj children might have local transforms.
-            // Simplest is to attach flame to scene and copy pieceObj world transform + local offset
-
-            // But pieceObj is scaling. We want flame to scale with it? 
-            // User said "shrinking its size while showing flames".
-            // So flame should shrink too.
-
-            // Let's just copy the pieceObj's current world transform
-            // But pieceObj has children. 
-            // We are iterating pieceObj children.
-
-            // Actually, simpler: Attach flame meshes to the pieceObj?
-            // No, because we want additive blending and maybe different scale logic.
-            // But if we attach to pieceObj, they shrink with it automatically.
-            // Let's try attaching to scene and copying position/rotation/scale.
-
-            item.mesh.position.copy(pieceObj.position).add(item.offset.clone().applyEuler(pieceObj.rotation).multiply(pieceObj.scale));
-            item.mesh.rotation.copy(pieceObj.rotation);
-            item.mesh.scale.copy(pieceObj.scale);
-
-            // Fade flame at the end
-            item.mesh.material.opacity = 1 - ease;
-        });
-
-        // 6. Animate particles
-        particles.forEach(p => {
-            if (p.life > 0) {
-                p.mesh.position.add(p.velocity);
-                p.velocity.y += 0.002; // Rising acceleration
-                p.mesh.rotation.x += 0.1;
-                p.mesh.rotation.y += 0.1;
-                p.life -= 0.02;
-                p.mesh.scale.setScalar(p.life);
-                p.mesh.material.opacity = p.life;
-            } else {
-                p.mesh.visible = false;
-            }
-        });
-
-        if (progress < 1) {
-            requestAnimationFrame(animate);
-        } else {
-            pieceObj.removeFromParent();
-            // Clean up materials
-            materials.forEach(mat => mat.dispose());
-            flameMaterial.dispose();
-
-            // Clean up meshes
+            // 5. Update Flame Shell
+            flameMaterial.uniforms.time.value = elapsed * 0.001;
             flameMeshes.forEach(item => {
-                scene.remove(item.mesh);
-                item.mesh.geometry.dispose();
+                item.mesh.position.copy(pieceObj.position).add(item.offset.clone().applyEuler(pieceObj.rotation).multiply(pieceObj.scale));
+                item.mesh.rotation.copy(pieceObj.rotation);
+                item.mesh.scale.copy(pieceObj.scale);
+
+                // Fade flame at the end
+                item.mesh.material.opacity = 1 - ease;
             });
 
-            // Clean up particles
+            // 6. Animate particles
             particles.forEach(p => {
-                scene.remove(p.mesh);
-                p.mesh.geometry.dispose();
-                p.mesh.material.dispose();
+                if (p.life > 0) {
+                    p.mesh.position.add(p.velocity);
+                    p.velocity.y += 0.002; // Rising acceleration
+                    p.mesh.rotation.x += 0.1;
+                    p.mesh.rotation.y += 0.1;
+                    p.life -= 0.02;
+                    p.mesh.scale.setScalar(p.life);
+                    p.mesh.material.opacity = p.life;
+                } else {
+                    p.mesh.visible = false;
+                }
             });
-        }
-    }
-    animate();
-}
 
+            if (progress < 1) {
+                requestAnimationFrame(animate);
+            } else {
+                pieceObj.removeFromParent();
+                // Clean up materials
+                materials.forEach(mat => mat.dispose());
+                flameMaterial.dispose();
+
+                // Clean up meshes
+                flameMeshes.forEach(item => {
+                    scene.remove(item.mesh);
+                    item.mesh.geometry.dispose();
+                });
+
+                // Clean up particles
+                particles.forEach(p => {
+                    scene.remove(p.mesh);
+                    p.mesh.geometry.dispose();
+                    p.mesh.material.dispose();
+                });
+                resolve();
+            }
+        }
+        animate();
+    });
+}
