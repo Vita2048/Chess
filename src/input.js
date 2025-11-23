@@ -258,39 +258,44 @@ async function executeMove(move) {
             const statusDiv = document.getElementById('status');
             if (statusDiv) statusDiv.innerText = "Computer is thinking...";
 
-            // No need for large timeout now, just a small buffer for feel
-            setTimeout(() => {
-                import('./ai.js').then(async module => {
-                    const bestMove = module.getBestMove();
-                    if (bestMove) {
-                        const result = makeMove(bestMove);
-                        await movePieceVisual(bestMove.from, bestMove.to, bestMove.promotion, true);
+            // Use Web Worker for AI calculation to keep UI responsive
+            const worker = new Worker('/Chess/aiWorker.js');
+            worker.postMessage({ fen: game.fen() });
+            worker.onmessage = async function(e) {
+                const bestMove = e.data;
+                worker.terminate(); // Clean up worker
+                if (bestMove) {
+                    const result = makeMove(bestMove);
+                    await movePieceVisual(bestMove.from, bestMove.to, bestMove.promotion, true);
 
-                        // Check for castling (AI)
-                        if (result && (result.flags.includes('k') || result.flags.includes('q'))) {
-                            let rookFrom, rookTo;
-                            if (result.color === 'w') {
-                                if (result.flags.includes('k')) { rookFrom = 'h1'; rookTo = 'f1'; }
-                                else if (result.flags.includes('q')) { rookFrom = 'a1'; rookTo = 'd1'; }
-                            } else {
-                                if (result.flags.includes('k')) { rookFrom = 'h8'; rookTo = 'f8'; }
-                                else if (result.flags.includes('q')) { rookFrom = 'a8'; rookTo = 'd8'; }
-                            }
-                            if (rookFrom && rookTo) {
-                                await movePieceVisual(rookFrom, rookTo, null, true);
-                            }
+                    // Check for castling (AI)
+                    if (result && (result.flags.includes('k') || result.flags.includes('q'))) {
+                        let rookFrom, rookTo;
+                        if (result.color === 'w') {
+                            if (result.flags.includes('k')) { rookFrom = 'h1'; rookTo = 'f1'; }
+                            else if (result.flags.includes('q')) { rookFrom = 'a1'; rookTo = 'd1'; }
+                        } else {
+                            if (result.flags.includes('k')) { rookFrom = 'h8'; rookTo = 'f8'; }
+                            else if (result.flags.includes('q')) { rookFrom = 'a8'; rookTo = 'd8'; }
                         }
-
-                        if (statusDiv) statusDiv.innerText = "White's Turn";
-                        checkGameOver();
-                    } else {
-                        // AI has no moves? Check game over again
-                        if (!await checkGameOver()) {
-                            console.error("AI returned no move but game is not over?");
+                        if (rookFrom && rookTo) {
+                            await movePieceVisual(rookFrom, rookTo, null, true);
                         }
                     }
-                });
-            }, 500);
+
+                    if (statusDiv) statusDiv.innerText = "White's Turn";
+                    checkGameOver();
+                } else {
+                    // AI has no moves? Check game over again
+                    if (!await checkGameOver()) {
+                        console.error("AI returned no move but game is not over?");
+                    }
+                }
+            };
+            worker.onerror = function(error) {
+                console.error('AI Worker error:', error);
+                worker.terminate();
+            };
             return;
         } else {
             // Move was invalid (chess.js rejected it)
