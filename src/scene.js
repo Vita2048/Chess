@@ -20,7 +20,7 @@ export let stepFile = 1.0;
 export let stepRank = 1.0;
 
 export const BOARD_SCALE = 20;
-export const BOARD_ROTATION_Y = -45; // Degrees
+export const BOARD_ROTATION_Y = -90; // Degrees
 
 export let rankDir = new THREE.Vector3();
 export let fileDir = new THREE.Vector3();
@@ -31,7 +31,7 @@ export function initGame() {
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87CEEB);
 
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.position.set(0, 12, 12);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -271,7 +271,7 @@ export function initGame() {
         scene.add(frontLight.target);
 
         // === Final camera positioning ===
-        camera.position.set(boardCenter.x, boardCenter.y + 12, boardCenter.z + 12);
+        camera.position.set(boardCenter.x, boardCenter.y + 6, boardCenter.z + 6);
         camera.lookAt(boardCenter);
         controls.target.copy(boardCenter);
         controls.update();
