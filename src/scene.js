@@ -469,18 +469,28 @@ function initBoardGlow() {
         return;
     }
 
-    // Clone the border mesh to use its geometry and transform
-    boardGlowMesh = boardBorderMesh.clone();
+    // Get bounding box of polySurface51
+    boardBorderMesh.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(boardBorderMesh);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
 
-    // Shader for the glow with gradient
+    console.log(`PolySurface51 Bounding Box: Size(${size.x.toFixed(2)}, ${size.y.toFixed(2)}, ${size.z.toFixed(2)})`);
+
+    // Create a plane same size as polySurface51 for the glow on edges
+    const geometry = new THREE.PlaneGeometry(size.x, size.z);
+
+    // Beautiful shader like piece movement highlights
     const material = new THREE.ShaderMaterial({
-        transparent: true,
-        depthWrite: false,
-        side: THREE.DoubleSide,
         uniforms: {
-            time: { value: 0 },
-            color: { value: new THREE.Color(0x0044ff) } // Deep Blue
+            time: { value: 0 }
         },
+        transparent: true,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
         vertexShader: `
             varying vec2 vUv;
             void main() {
@@ -490,35 +500,53 @@ function initBoardGlow() {
         `,
         fragmentShader: `
             uniform float time;
-            uniform vec3 color;
             varying vec2 vUv;
 
             void main() {
-                // Gradient from center to edge
-                float dist = length(vUv - vec2(0.5));
-                float gradient = 1.0 - smoothstep(0.0, 0.5, dist);
-                // Pulsing
-                float pulse = 0.6 + 0.4 * sin(time * 5.0);
-                gl_FragColor = vec4(color, gradient * pulse);
+                vec2 uv = vUv;
+                vec2 center = abs(uv - 0.5);
+                float box = max(center.x, center.y); // Chebyshev = perfect square
+
+                vec3 color = vec3(0.0);
+                float alpha = 0.0;
+                // Only glow on the thin outline
+                if (box >= 0.45 && box <= 0.5) {
+                    // Outer glowing border
+                    float outer = 0.50;
+                    float border = smoothstep(outer - 0.05, outer, box);
+
+                    // Animated flashing energy waves
+                    float wave = sin((box - 0.3) * 25.0 - time * 12.0) * 0.5 + 0.5;
+                    float flash = pow(wave, 4.0) * (0.6 + 0.4 * sin(time * 8.0));
+
+                    // Dark, intense blue
+                    vec3 darkBlue   = vec3(0.00, 0.02, 0.18);
+                    vec3 midBlue    = vec3(0.00, 0.10, 0.45);
+                    vec3 brightBlue = vec3(0.10, 0.35, 0.95);
+                    vec3 whiteFlash = vec3(0.70, 0.90, 1.00);
+
+                    color = mix(darkBlue, midBlue, border);
+                    color = mix(color, brightBlue, border * 1.2);
+                    color = mix(color, whiteFlash, flash * border);
+
+                    // Strong pulsing intensity
+                    float pulse = 0.7 + 0.3 * sin(time * 10.0);
+                    float intensity = (border * 1.8 + flash * 2.5) * pulse;
+
+                    alpha = intensity * 28.0;
+                }
+
+                gl_FragColor = vec4(color, alpha);
             }
         `
     });
 
-    boardGlowMesh.material = material;
+    boardGlowMesh = new THREE.Mesh(geometry, material);
 
-    // Copy world transform from border mesh
-    const worldPos = new THREE.Vector3();
-    boardBorderMesh.getWorldPosition(worldPos);
-    boardGlowMesh.position.copy(worldPos);
-    boardGlowMesh.position.y += 0.01; // Slightly above
-
-    const worldQuat = new THREE.Quaternion();
-    boardBorderMesh.getWorldQuaternion(worldQuat);
-    boardGlowMesh.quaternion.copy(worldQuat);
-
-    const worldScale = new THREE.Vector3();
-    boardBorderMesh.getWorldScale(worldScale);
-    boardGlowMesh.scale.copy(worldScale);
+    // Position at center, slightly above board
+    boardGlowMesh.position.copy(center);
+    boardGlowMesh.position.y = boardY + 0.01;
+    boardGlowMesh.rotation.x = -Math.PI / 2;
 
     boardGlowMesh.visible = false;
     boardGlowMesh.raycast = () => { };
@@ -526,7 +554,7 @@ function initBoardGlow() {
     // Add to SCENE
     scene.add(boardGlowMesh);
 
-    console.log("Board glow mesh initialized (Following polySurface51 shape with gradient)");
+    console.log("Board glow mesh initialized (Rectangular silhouette bigger than polySurface51)");
 }
 
 function calibrateBoardGrid() {
