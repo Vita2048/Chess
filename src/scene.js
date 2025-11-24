@@ -487,6 +487,12 @@ export function showCalculationVideo() {
         calculationVideo.play().catch(e => console.error("Video play failed:", e));
         calculationMesh.visible = true;
         if (boardGlowMesh) boardGlowMesh.visible = true;
+
+        // Position status below the animation
+        const statusDiv = document.getElementById('top-center-status');
+        if (statusDiv) {
+            statusDiv.style.top = '240px'; // Below the 200px video + some margin
+        }
     }
 }
 
@@ -497,6 +503,12 @@ export function hideCalculationVideo() {
         calculationMesh.visible = false;
         if (overlayMesh) overlayMesh.visible = false;
         if (boardGlowMesh) boardGlowMesh.visible = false;
+
+        // Reset status position
+        const statusDiv = document.getElementById('top-center-status');
+        if (statusDiv) {
+            statusDiv.style.top = '20px';
+        }
     }
 }
 

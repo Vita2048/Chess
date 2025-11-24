@@ -263,7 +263,7 @@ async function executeMove(move) {
             if (await checkGameOver()) return;
 
             // Trigger AI move
-            const statusDiv = document.getElementById('status');
+            const statusDiv = document.getElementById('top-center-status');
             if (statusDiv) statusDiv.innerText = "Computer is thinking...";
 
             // Show calculation video
@@ -273,9 +273,6 @@ async function executeMove(move) {
             const worker = new Worker('/Chess/aiWorker.js');
             worker.postMessage({ fen: game.fen() });
             worker.onmessage = async function (e) {
-                // Hide calculation video
-                hideCalculationVideo();
-
                 const bestMove = e.data;
                 worker.terminate(); // Clean up worker
                 if (bestMove) {
@@ -297,6 +294,8 @@ async function executeMove(move) {
                         }
                     }
 
+                    // Hide calculation video and update status after move completes
+                    hideCalculationVideo();
                     if (statusDiv) statusDiv.innerText = "White's Turn";
                     checkGameOver();
                 } else {
@@ -331,7 +330,7 @@ async function executeMove(move) {
 }
 
 async function checkGameOver() {
-    const statusDiv = document.getElementById('status');
+    const statusDiv = document.getElementById('top-center-status');
     if (game.isGameOver()) {
         let message = "";
         if (game.isCheckmate()) {
