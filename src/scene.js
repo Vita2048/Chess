@@ -5,6 +5,9 @@ import { initInput, updateInput } from './input.js';
 
 export let scene, camera, renderer, controls;
 let calculationMesh = null;
+let overlayMesh = null;
+let boardGlowMesh = null;
+let boardBorderMesh = null;
 let calculationVideo = null;
 export const pieces = {};
 export const boardSquares = {};
@@ -97,6 +100,14 @@ export function initGame() {
                     child.getWorldPosition(worldPos);
                     boardY = worldPos.y;
                     boardCenter.copy(worldPos);
+                    boardY = worldPos.y;
+                    boardCenter.copy(worldPos);
+                }
+
+                // Capture polySurface51 for the glow effect
+                if (child.name === 'polySurface51') {
+                    boardBorderMesh = child;
+                    console.log("Found board border mesh: polySurface51");
                 }
             }
         });
@@ -283,6 +294,7 @@ export function initGame() {
 
         initInput(camera, scene);
         initCalculationVideo();
+        initBoardGlow();
         animate();
 
     }, undefined, (error) => {
@@ -351,17 +363,37 @@ function initCalculationVideo() {
     // Initial positioning (will be updated by layout function)
     calculationMesh.position.set(0, 0, -5);
     calculationMesh.visible = false;
+    calculationMesh.renderOrder = 1000; // Ensure video is on top of overlay
 
     // CRITICAL FIX: Disable raycasting for this mesh so it doesn't block mouse clicks
     calculationMesh.raycast = () => { };
 
     camera.add(calculationMesh);
 
+    // === Gray Overlay ===
+    const overlayMaterial = new THREE.MeshBasicMaterial({
+        color: 0x000000,
+        transparent: true,
+        opacity: 0.6, // Slightly darker for better visibility
+        depthTest: false,
+        depthWrite: false,
+        side: THREE.DoubleSide
+    });
+    overlayMesh = new THREE.Mesh(geometry, overlayMaterial);
+    overlayMesh.position.set(0, 0, -5.1); // Slightly behind video
+    overlayMesh.visible = false;
+    overlayMesh.renderOrder = 999; // On top of scene, behind video
+    overlayMesh.raycast = () => { }; // Disable raycasting
+    camera.add(overlayMesh);
+
     // Update layout once metadata is loaded (to get aspect ratio)
     calculationVideo.addEventListener('loadedmetadata', updateVideoLayout);
 
     // Update layout on resize
     window.addEventListener('resize', updateVideoLayout);
+
+    // Trigger initial layout update
+    updateVideoLayout();
 }
 
 function updateVideoLayout() {
@@ -399,12 +431,25 @@ function updateVideoLayout() {
     const meshY = topY - (height3D / 2);
 
     calculationMesh.position.set(0, meshY, -distance);
+
+    // Update Overlay Layout
+    // Overlay should cover the whole screen
+    // At distance 5.1
+    const overlayDist = 5.1;
+    const overlayHeight = 2 * Math.tan(vFOV / 2) * overlayDist;
+    const overlayWidth = overlayHeight * camera.aspect;
+
+    if (overlayMesh) {
+        overlayMesh.scale.set(overlayWidth, overlayHeight, 1);
+        overlayMesh.position.set(0, 0, -overlayDist);
+    }
 }
 
 export function showCalculationVideo() {
     if (calculationVideo && calculationMesh) {
         calculationVideo.play().catch(e => console.error("Video play failed:", e));
         calculationMesh.visible = true;
+        if (boardGlowMesh) boardGlowMesh.visible = true;
     }
 }
 
@@ -413,7 +458,75 @@ export function hideCalculationVideo() {
         calculationVideo.pause();
         calculationVideo.currentTime = 0;
         calculationMesh.visible = false;
+        if (overlayMesh) overlayMesh.visible = false;
+        if (boardGlowMesh) boardGlowMesh.visible = false;
     }
+}
+
+function initBoardGlow() {
+    if (!boardBorderMesh) {
+        console.warn("polySurface51 not found, skipping board glow.");
+        return;
+    }
+
+    // Clone the border mesh to use its geometry and transform
+    boardGlowMesh = boardBorderMesh.clone();
+
+    // Shader for the glow with gradient
+    const material = new THREE.ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        uniforms: {
+            time: { value: 0 },
+            color: { value: new THREE.Color(0x0044ff) } // Deep Blue
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform float time;
+            uniform vec3 color;
+            varying vec2 vUv;
+
+            void main() {
+                // Gradient from center to edge
+                float dist = length(vUv - vec2(0.5));
+                float gradient = 1.0 - smoothstep(0.0, 0.5, dist);
+                // Pulsing
+                float pulse = 0.6 + 0.4 * sin(time * 5.0);
+                gl_FragColor = vec4(color, gradient * pulse);
+            }
+        `
+    });
+
+    boardGlowMesh.material = material;
+
+    // Copy world transform from border mesh
+    const worldPos = new THREE.Vector3();
+    boardBorderMesh.getWorldPosition(worldPos);
+    boardGlowMesh.position.copy(worldPos);
+    boardGlowMesh.position.y += 0.01; // Slightly above
+
+    const worldQuat = new THREE.Quaternion();
+    boardBorderMesh.getWorldQuaternion(worldQuat);
+    boardGlowMesh.quaternion.copy(worldQuat);
+
+    const worldScale = new THREE.Vector3();
+    boardBorderMesh.getWorldScale(worldScale);
+    boardGlowMesh.scale.copy(worldScale);
+
+    boardGlowMesh.visible = false;
+    boardGlowMesh.raycast = () => { };
+
+    // Add to SCENE
+    scene.add(boardGlowMesh);
+
+    console.log("Board glow mesh initialized (Following polySurface51 shape with gradient)");
 }
 
 function calibrateBoardGrid() {
@@ -526,7 +639,12 @@ function animate() {
     controls.update();
 
     // Update shader uniforms
-    updateInput(Date.now() / 1000);
+    const time = Date.now() / 1000;
+    updateInput(time);
+
+    if (boardGlowMesh && boardGlowMesh.visible) {
+        boardGlowMesh.material.uniforms.time.value = time;
+    }
 
     renderer.render(scene, camera);
 }
