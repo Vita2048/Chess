@@ -24,6 +24,32 @@ export let boardMesh = null;
 export let stepFile = 1.0;
 export let stepRank = 1.0;
 
+// Loading overlay functions
+function showLoadingOverlay() {
+    const overlay = document.getElementById('loading-overlay');
+    if (overlay) {
+        overlay.classList.remove('hidden');
+    }
+}
+
+function hideLoadingOverlay() {
+    const overlay = document.getElementById('loading-overlay');
+    if (overlay) {
+        overlay.classList.add('hidden');
+    }
+}
+
+function updateLoadingProgress(loaded, total) {
+    const progressBar = document.getElementById('progress-bar');
+    const progressText = document.getElementById('progress-percentage');
+
+    if (progressBar && progressText && total > 0) {
+        const percentage = Math.round((loaded / total) * 100);
+        progressBar.style.width = percentage + '%';
+        progressText.textContent = percentage + '%';
+    }
+}
+
 
 export const BOARD_SCALE = 20;
 export const BOARD_ROTATION_Y = -90; // Degrees
@@ -56,8 +82,14 @@ export function initGame() {
     controls.dampingFactor = 0.05;
     controls.maxPolarAngle = Math.PI / 2;
 
+    // Show loading overlay
+    showLoadingOverlay();
+
     const loader = new GLTFLoader();
     loader.load('./models/ChessSetCorrectQueen.glb', function (gltf) {
+        // Hide loading overlay on success
+        hideLoadingOverlay();
+
         const model = gltf.scene;
 
         // === CRUCIAL FIX: Correct the 45° rotation from Blender ===
@@ -297,7 +329,12 @@ export function initGame() {
         initBoardGlow();
         animate();
 
-    }, undefined, (error) => {
+    }, function (progress) {
+        // Update loading progress
+        updateLoadingProgress(progress.loaded, progress.total);
+    }, function (error) {
+        // Hide loading overlay on error
+        hideLoadingOverlay();
         console.error('GLTF load error:', error);
     });
 }
