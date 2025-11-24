@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { pieces, boardSquares, stepRank, stepFile, boardY, pieceYOffset, boardMesh, pieceTemplates, BOARD_SCALE, BOARD_ROTATION_Y, rankDir, fileDir, syncBoardVisuals, videoPlane } from './scene.js';
+import { pieces, boardSquares, stepRank, stepFile, boardY, pieceYOffset, boardMesh, pieceTemplates, BOARD_SCALE, BOARD_ROTATION_Y, rankDir, fileDir, syncBoardVisuals } from './scene.js';
 import { getMoves, makeMove, game, resetGame, undoMove, saveGameXML, loadGameXML } from './chessLogic.js';
 
 let raycaster;
@@ -258,31 +258,21 @@ async function executeMove(move) {
             const statusDiv = document.getElementById('status');
             if (statusDiv) statusDiv.innerText = "Computer is thinking...";
 
-            // Show calculation video (both HTML and 3D plane for testing)
+            // Show calculation video
             const video = document.getElementById('calculation-video');
             if (video) {
-                video.style.display = 'block'; // Show HTML video for testing
+                video.style.display = 'block';
                 video.play();
-                console.log('HTML video shown for testing');
-            }
-            if (videoPlane) {
-                videoPlane.visible = true;
-                console.log('Video plane shown');
-            } else {
-                console.log('VideoPlane not found');
             }
 
             // Use Web Worker for AI calculation to keep UI responsive
             const worker = new Worker('/Chess/aiWorker.js');
             worker.postMessage({ fen: game.fen() });
             worker.onmessage = async function(e) {
-                // Hide calculation video (both HTML and 3D plane)
+                // Hide calculation video
                 if (video) {
                     video.style.display = 'none';
                     video.pause();
-                }
-                if (videoPlane) {
-                    videoPlane.visible = false;
                 }
 
                 const bestMove = e.data;
@@ -316,13 +306,10 @@ async function executeMove(move) {
                 }
             };
             worker.onerror = function(error) {
-                // Hide calculation video (both HTML and 3D plane) on error
+                // Hide calculation video on error
                 if (video) {
                     video.style.display = 'none';
                     video.pause();
-                }
-                if (videoPlane) {
-                    videoPlane.visible = false;
                 }
                 console.error('AI Worker error:', error);
                 worker.terminate();

@@ -19,9 +19,6 @@ export let boardMesh = null;
 export let stepFile = 1.0;
 export let stepRank = 1.0;
 
-// Video plane for chroma key effect
-export let videoPlane = null;
-export let videoTexture = null;
 
 export const BOARD_SCALE = 20;
 export const BOARD_ROTATION_Y = -90; // Degrees
@@ -31,87 +28,6 @@ export let fileDir = new THREE.Vector3();
 
 let boardCenter = new THREE.Vector3();
 
-function createVideoPlane() {
-    const videoElement = document.getElementById('calculation-video');
-    if (!videoElement) {
-        console.warn('Video element not found');
-        return;
-    }
-
-    console.log('Video element found:', videoElement);
-    console.log('Video src:', videoElement.src);
-    console.log('Video readyState:', videoElement.readyState);
-
-    // Create video texture
-    videoTexture = new THREE.VideoTexture(videoElement);
-    videoTexture.minFilter = THREE.LinearFilter;
-    videoTexture.magFilter = THREE.LinearFilter;
-    videoTexture.format = THREE.RGBFormat;
-
-    // Temporarily use basic material to test video visibility
-    const chromaKeyMaterial = new THREE.MeshBasicMaterial({
-        map: videoTexture,
-        transparent: false,
-        side: THREE.DoubleSide
-    });
-
-    /*
-    // Chroma key shader material
-    const chromaKeyMaterial = new THREE.ShaderMaterial({
-        uniforms: {
-            videoTexture: { value: videoTexture },
-            keyColor: { value: new THREE.Vector3(0.0, 0.0, 0.0) }, // Black
-            threshold: { value: 0.4 } // Adjust this value to control how much "black" is removed
-        },
-        vertexShader: `
-            varying vec2 vUv;
-            void main() {
-                vUv = uv;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `,
-        fragmentShader: `
-            uniform sampler2D videoTexture;
-            uniform vec3 keyColor;
-            uniform float threshold;
-            varying vec2 vUv;
-
-            void main() {
-                vec4 texColor = texture2D(videoTexture, vUv);
-
-                // Calculate distance from key color (black)
-                float dist = distance(texColor.rgb, keyColor);
-
-                // Smooth transition for alpha based on distance
-                float alpha = smoothstep(threshold, threshold + 0.1, dist);
-
-                gl_FragColor = vec4(texColor.rgb, alpha);
-            }
-        `,
-        transparent: true,
-        side: THREE.DoubleSide
-    });
-    */
-
-    // Create plane geometry (adjust size to match original video dimensions)
-    const planeGeometry = new THREE.PlaneGeometry(8, 4.5); // 16:9 aspect ratio, scaled larger for testing
-
-    // Create mesh
-    videoPlane = new THREE.Mesh(planeGeometry, chromaKeyMaterial);
-
-    // Position the plane as an overlay (fixed world position)
-    // From default camera position (0,12,12) looking at (0,0,0), this appears as overlay
-    videoPlane.position.set(0, 6, 10); // Much closer and more visible
-    videoPlane.lookAt(0, 6, 11); // Look slightly forward
-
-    // Initially hide the plane
-    videoPlane.visible = false;
-
-    // Add to scene
-    scene.add(videoPlane);
-
-    console.log('Video plane created and added to scene');
-}
 
 export function initGame() {
     scene = new THREE.Scene();
@@ -133,9 +49,6 @@ export function initGame() {
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controls.maxPolarAngle = Math.PI / 2;
-
-    // Create video plane with chroma key shader
-    createVideoPlane();
 
     const loader = new GLTFLoader();
     loader.load('./models/ChessSetCorrectQueen.glb', function (gltf) {
