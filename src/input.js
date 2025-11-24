@@ -221,12 +221,22 @@ async function executeMove(move) {
 
     try {
         const result = makeMove(move);
+        console.log("Move result:", result);
+        if (result && result.flags) {
+            console.log("Move flags:", result.flags);
+            if (result.flags.includes('e')) {
+                console.log("En passant capture detected");
+            }
+        }
+        console.log("Board after move:", game.board());
         if (result) {
             // Clear selection glow before animating (restore original materials first)
             clearSelected();
 
             // Wait for move and capture animations to complete
             await movePieceVisual(move.from, move.to, move.promotion, true);
+            await removeCapturedPieces();
+            console.log("Pieces after visual move:", Object.keys(pieces));
 
             // Check for castling
             if (result.flags.includes('k') || result.flags.includes('q')) {
@@ -276,8 +286,19 @@ async function executeMove(move) {
                 const bestMove = e.data;
                 worker.terminate(); // Clean up worker
                 if (bestMove) {
+                    console.log("AI executing move:", bestMove);
                     const result = makeMove(bestMove);
+                    console.log("AI move result:", result);
+                    if (result && result.flags) {
+                        console.log("AI move flags:", result.flags);
+                        if (result.flags.includes('e')) {
+                            console.log("AI en passant capture detected");
+                        }
+                    }
+                    console.log("Board after AI move:", game.board());
                     await movePieceVisual(bestMove.from, bestMove.to, bestMove.promotion, true);
+                    await removeCapturedPieces();
+                    console.log("Pieces after AI visual move:", Object.keys(pieces));
 
                     // Check for castling (AI)
                     if (result && (result.flags.includes('k') || result.flags.includes('q'))) {
@@ -879,4 +900,18 @@ function animateCapture(pieceObj) {
         }
         animate();
     });
+}
+
+async function removeCapturedPieces() {
+    const squaresToRemove = [];
+    for (const sq in pieces) {
+        if (!game.get(sq)) {
+            squaresToRemove.push(sq);
+        }
+    }
+    for (const sq of squaresToRemove) {
+        console.log(`Removing captured piece at ${sq}`);
+        await animateCapture(pieces[sq]);
+        delete pieces[sq];
+    }
 }
