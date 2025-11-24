@@ -120,6 +120,12 @@ function onMouseClick(event) {
 async function handleSquareClick(square) {
     console.log("Clicked square:", square);
 
+    // Prevent user input during AI's turn (assuming user is white)
+    if (game.turn() !== 'w') {
+        console.log("Ignoring click during AI's turn");
+        return;
+    }
+
     if (selectedSquare) {
         // Check for promotion using chess.js validation
         // This ensures we only show the dialog for VALID promotion moves
@@ -146,11 +152,14 @@ async function handleSquareClick(square) {
     }
 
     const piece = game.get(square);
+    console.log("handleSquareClick: square =", square, "current turn =", game.turn(), "piece =", piece ? piece.color + piece.type : 'none');
     if (piece && piece.color === game.turn()) {
+        console.log("Selecting piece at", square);
         selectedSquare = square;
         highlightSelected(square);
         highlightMoves(square);
     } else {
+        console.log("Not selecting piece at", square, "- either no piece or wrong color/turn");
         selectedSquare = null;
         clearHighlights();
         clearSelected();
