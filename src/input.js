@@ -235,7 +235,6 @@ async function executeMove(move) {
 
             // Wait for move and capture animations to complete
             await movePieceVisual(move.from, move.to, move.promotion, true);
-            await removeCapturedPieces();
             console.log("Pieces after visual move:", Object.keys(pieces));
 
             // Check for castling
@@ -261,9 +260,14 @@ async function executeMove(move) {
 
                 if (rookFrom && rookTo) {
                     console.log(`Castling detected! Moving rook from ${rookFrom} to ${rookTo}`);
+                    console.log(`Before rook move: pieces[${rookFrom}] =`, !!pieces[rookFrom], `game.get(${rookFrom}) =`, game.get(rookFrom));
                     await movePieceVisual(rookFrom, rookTo, null, true);
+                    console.log(`After rook move: pieces[${rookTo}] =`, !!pieces[rookTo], `game.get(${rookTo}) =`, game.get(rookTo));
                 }
             }
+
+            await removeCapturedPieces();
+            console.log("Pieces after removeCapturedPieces:", Object.keys(pieces));
 
             selectedSquare = null;
             clearHighlights();
@@ -297,7 +301,6 @@ async function executeMove(move) {
                     }
                     console.log("Board after AI move:", game.board());
                     await movePieceVisual(bestMove.from, bestMove.to, bestMove.promotion, true);
-                    await removeCapturedPieces();
                     console.log("Pieces after AI visual move:", Object.keys(pieces));
 
                     // Check for castling (AI)
@@ -314,6 +317,9 @@ async function executeMove(move) {
                             await movePieceVisual(rookFrom, rookTo, null, true);
                         }
                     }
+
+                    await removeCapturedPieces();
+                    console.log("Pieces after AI removeCapturedPieces:", Object.keys(pieces));
 
                     // Hide calculation video and update status after move completes
                     hideCalculationVideo();
@@ -909,6 +915,7 @@ async function removeCapturedPieces() {
             squaresToRemove.push(sq);
         }
     }
+    console.log(`Squares to remove:`, squaresToRemove);
     for (const sq of squaresToRemove) {
         console.log(`Removing captured piece at ${sq}`);
         await animateCapture(pieces[sq]);
