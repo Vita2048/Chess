@@ -4,6 +4,8 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { initInput, updateInput } from './input.js';
 
 export let scene, camera, renderer, controls;
+let calculationMesh = null;
+let calculationVideo = null;
 export const pieces = {};
 export const boardSquares = {};
 export const pieceTemplates = {};
@@ -35,6 +37,7 @@ export function initGame() {
 
     camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.position.set(0, 12, 12);
+    scene.add(camera); // Ensure camera children are rendered
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -279,11 +282,138 @@ export function initGame() {
         controls.update();
 
         initInput(camera, scene);
+        initCalculationVideo();
         animate();
 
     }, undefined, (error) => {
         console.error('GLTF load error:', error);
     });
+}
+
+function initCalculationVideo() {
+    // Create hidden video element
+    calculationVideo = document.createElement('video');
+    calculationVideo.src = (import.meta.env.BASE_URL || '/') + 'video/Calculation.mp4';
+    calculationVideo.loop = true;
+    calculationVideo.muted = true;
+    calculationVideo.crossOrigin = 'anonymous';
+    calculationVideo.playsInline = true;
+    calculationVideo.style.display = 'none'; // Hidden from DOM
+
+    calculationVideo.onerror = (e) => {
+        console.error("Error loading calculation video:", calculationVideo.error, e);
+    };
+
+    document.body.appendChild(calculationVideo);
+
+    const texture = new THREE.VideoTexture(calculationVideo);
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.format = THREE.RGBAFormat;
+
+    const material = new THREE.ShaderMaterial({
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+        uniforms: {
+            map: { value: texture }
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform sampler2D map;
+            varying vec2 vUv;
+            void main() {
+                vec4 texColor = texture2D(map, vUv);
+                
+                // Luma Key: Calculate brightness
+                float brightness = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
+                
+                // Smooth cutoff to remove black background
+                // Adjust these values to tune the removal
+                float alpha = smoothstep(0.05, 0.2, brightness);
+                
+                gl_FragColor = vec4(texColor.rgb, alpha);
+            }
+        `
+    });
+
+    // Create plane attached to camera (HUD style)
+    // Use 1x1 geometry to make scaling easier
+    const geometry = new THREE.PlaneGeometry(1, 1);
+    calculationMesh = new THREE.Mesh(geometry, material);
+
+    // Initial positioning (will be updated by layout function)
+    calculationMesh.position.set(0, 0, -5);
+    calculationMesh.visible = false;
+
+    // CRITICAL FIX: Disable raycasting for this mesh so it doesn't block mouse clicks
+    calculationMesh.raycast = () => { };
+
+    camera.add(calculationMesh);
+
+    // Update layout once metadata is loaded (to get aspect ratio)
+    calculationVideo.addEventListener('loadedmetadata', updateVideoLayout);
+
+    // Update layout on resize
+    window.addEventListener('resize', updateVideoLayout);
+}
+
+function updateVideoLayout() {
+    if (!calculationMesh || !calculationVideo || !camera) return;
+
+    const videoWidth = calculationVideo.videoWidth || 16;
+    const videoHeight = calculationVideo.videoHeight || 9;
+    const aspect = videoWidth / videoHeight;
+
+    // Target: 200px height, Top Center
+    const targetPixelHeight = 200;
+    const distance = 5; // Distance from camera
+
+    // Calculate visible height at the given distance
+    // vFOV is in degrees
+    const vFOV = THREE.MathUtils.degToRad(camera.fov);
+    const visibleHeight = 2 * Math.tan(vFOV / 2) * distance;
+
+    // Calculate visible width based on aspect ratio of the window
+    const visibleWidth = visibleHeight * camera.aspect;
+
+    // Convert pixel height to 3D units
+    // 3D Height / Visible Height = Pixel Height / Window Height
+    const height3D = visibleHeight * (targetPixelHeight / window.innerHeight);
+    const width3D = height3D * aspect;
+
+    // Apply scale
+    calculationMesh.scale.set(width3D, height3D, 1);
+
+    // Position: Top Center
+    // Top of the view is visibleHeight / 2
+    // We want the top edge of the mesh to be at visibleHeight / 2
+    // Mesh center Y = Top Y - Half Mesh Height
+    const topY = visibleHeight / 2;
+    const meshY = topY - (height3D / 2);
+
+    calculationMesh.position.set(0, meshY, -distance);
+}
+
+export function showCalculationVideo() {
+    if (calculationVideo && calculationMesh) {
+        calculationVideo.play().catch(e => console.error("Video play failed:", e));
+        calculationMesh.visible = true;
+    }
+}
+
+export function hideCalculationVideo() {
+    if (calculationVideo && calculationMesh) {
+        calculationVideo.pause();
+        calculationVideo.currentTime = 0;
+        calculationMesh.visible = false;
+    }
 }
 
 function calibrateBoardGrid() {

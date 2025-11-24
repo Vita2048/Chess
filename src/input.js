@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { pieces, boardSquares, stepRank, stepFile, boardY, pieceYOffset, boardMesh, pieceTemplates, BOARD_SCALE, BOARD_ROTATION_Y, rankDir, fileDir, syncBoardVisuals } from './scene.js';
+import { pieces, boardSquares, stepRank, stepFile, boardY, pieceYOffset, boardMesh, pieceTemplates, BOARD_SCALE, BOARD_ROTATION_Y, rankDir, fileDir, syncBoardVisuals, showCalculationVideo, hideCalculationVideo } from './scene.js';
 import { getMoves, makeMove, game, resetGame, undoMove, saveGameXML, loadGameXML } from './chessLogic.js';
 
 let raycaster;
@@ -90,11 +90,19 @@ function onMouseClick(event) {
 
     if (intersects.length > 0) {
         let clickedObject = intersects[0].object;
-        console.log("Clicked object:", clickedObject.name, "Type:", clickedObject.type);
+        console.log("Clicked object:", clickedObject.name, "Type:", clickedObject.type, "Visible:", clickedObject.visible);
+
+        // Debug hierarchy
+        let p = clickedObject;
+        let path = [];
+        while (p) {
+            path.push(p.name || p.type);
+            p = p.parent;
+        }
+        console.log("Click Hierarchy:", path.join(" -> "));
 
         let pieceRoot = clickedObject;
         while (pieceRoot.parent && pieceRoot.parent !== scene && !pieceRoot.userData.square) {
-            // console.log("Traversing up to:", pieceRoot.parent.name, "Has square?", !!pieceRoot.parent.userData.square);
             pieceRoot = pieceRoot.parent;
         }
 
@@ -259,21 +267,14 @@ async function executeMove(move) {
             if (statusDiv) statusDiv.innerText = "Computer is thinking...";
 
             // Show calculation video
-            const video = document.getElementById('calculation-video');
-            if (video) {
-                video.style.display = 'block';
-                video.play();
-            }
+            showCalculationVideo();
 
             // Use Web Worker for AI calculation to keep UI responsive
             const worker = new Worker('/Chess/aiWorker.js');
             worker.postMessage({ fen: game.fen() });
-            worker.onmessage = async function(e) {
+            worker.onmessage = async function (e) {
                 // Hide calculation video
-                if (video) {
-                    video.style.display = 'none';
-                    video.pause();
-                }
+                hideCalculationVideo();
 
                 const bestMove = e.data;
                 worker.terminate(); // Clean up worker
@@ -305,12 +306,9 @@ async function executeMove(move) {
                     }
                 }
             };
-            worker.onerror = function(error) {
+            worker.onerror = function (error) {
                 // Hide calculation video on error
-                if (video) {
-                    video.style.display = 'none';
-                    video.pause();
-                }
+                hideCalculationVideo();
                 console.error('AI Worker error:', error);
                 worker.terminate();
             };
@@ -799,19 +797,10 @@ function animatePieceMove(pieceObj, targetPos, callback) {
         raysMaterial.uniforms.time.value = progress * 10;
         raysMaterial.uniforms.opacity.value = 0.3 * (1.0 - progress * 0.3);
 
-        // Pulse piece emissive
-        const emissivePulse = 1.75 + pulse * 0.75;
-        pieceObj.traverse((child) => {
-            if (child.isMesh && child.material) {
-                child.material.emissiveIntensity = emissivePulse;
-                child.material.needsUpdate = true;
-            }
-        });
-
         if (progress < 1) {
             requestAnimationFrame(animate);
         } else {
-            // Cleanup - remove all glow effects
+            // Cleanup
             scene.remove(coreLight);
             scene.remove(midGlow);
             scene.remove(outerGlow);
@@ -825,7 +814,7 @@ function animatePieceMove(pieceObj, targetPos, callback) {
                 mesh.material.needsUpdate = true;
             });
 
-            callback();
+            if (callback) callback();
         }
     }
 
@@ -833,317 +822,59 @@ function animatePieceMove(pieceObj, targetPos, callback) {
 }
 
 function finalizeMove(pieceObj, to, from, promotionType, finalPosition) {
+    // Update internal state
     pieces[to] = pieceObj;
     delete pieces[from];
     pieceObj.userData.square = to;
 
-    // Handle Promotion Visuals
+    // Handle promotion
     if (promotionType) {
-        console.log(`Promoting to ${promotionType}`);
-        const color = pieceObj.userData.color;
+        console.log(`Promoting piece at ${to} to ${promotionType}`);
+        // Remove old pawn
+        if (pieceObj.parent) pieceObj.parent.remove(pieceObj);
 
-        // Use pieceTemplates instead of searching the board
+        // Create new piece
+        const color = pieceObj.userData.color;
         const key = color + '_' + promotionType;
         const template = pieceTemplates[key];
 
-        console.log(`Looking for template with key: ${key}`);
-        console.log(`Template found:`, template);
         if (template) {
-            console.log("Template transforms:", {
-                rotation: template.rotation,
-                scale: template.scale,
-                type: template.type
-            });
-
             const newPiece = template.clone();
             scene.add(newPiece);
-
-            // Use targetPos (center of square) instead of pawn's position
-            // This ensures exact centering
-            // Since we normalized the template to have bottom at Y=0, we place it at boardY
-            newPiece.position.set(finalPosition.x, boardY, finalPosition.z);
-
-            // Scale and Rotation are now inherited from the template container
-
-            console.log(`[PROMOTION DEBUG]`);
-            console.log(`Target Pos:`, finalPosition);
-            console.log(`Board Y:`, boardY);
-            console.log(`Piece Y Offset:`, pieceYOffset);
-            console.log(`Initial NewPiece Pos:`, newPiece.position);
-
-
-
-            console.log(`New piece created. Scale:`, newPiece.scale);
-            console.log(`New piece rotation:`, newPiece.rotation);
-
-            // Adjust Y so the bottom of the new piece is on the board surface
-            newPiece.updateMatrixWorld(true);
-            const newBbox = new THREE.Box3().setFromObject(newPiece);
-            const size = new THREE.Vector3();
-            newBbox.getSize(size);
-            console.log(`[DEBUG] New Piece Size:`, size);
-
-            const heightAdjustment = boardY - newBbox.min.y;
-
-            newPiece.position.y += heightAdjustment;
-
-            console.log(`Final position:`, newPiece.position);
-
-            newPiece.userData = { ...pieceObj.userData, type: promotionType };
-            newPiece.userData.square = to;
-
-            // Remove the pawn
-            pieceObj.removeFromParent();
-
-            // Update pieces reference
+            newPiece.position.copy(finalPosition);
+            newPiece.userData = { square: to, color: color, type: promotionType };
             pieces[to] = newPiece;
 
-            // Ensure shadows are enabled for the new piece
+            // Enable shadows
             newPiece.traverse((child) => {
                 if (child.isMesh) {
                     child.castShadow = true;
                     child.receiveShadow = true;
                 }
             });
-        } else {
-            console.warn(`Could not find template for promotion to ${promotionType} (Key: ${key})`);
-            console.warn(`Available templates:`, Object.keys(pieceTemplates));
-            // Fallback: Just keep the pawn but change its type in userData (visuals will be wrong but game continues)
-            pieceObj.userData.type = promotionType;
         }
     }
 }
 
 function animateCapture(pieceObj) {
-    // 1. Clone materials for transparency
-    const materials = [];
-    pieceObj.traverse((child) => {
-        if (child.isMesh && child.material) {
-            child.material = child.material.clone();
-            child.material.transparent = true;
-            materials.push(child.material);
-        }
-    });
-
-    const startScale = pieceObj.scale.clone();
-    const startPos = pieceObj.position.clone();
-    const startTime = Date.now();
-    const duration = 2000; // Slower animation (2 seconds)
-
-    // === FLAME EFFECT ===
-    // Create a "shell" mesh for the flame effect
-    const flameMeshes = [];
-    const flameMaterial = new THREE.ShaderMaterial({
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        uniforms: {
-            time: { value: 0 },
-            color1: { value: new THREE.Color(0xffaa00) }, // Orange
-            color2: { value: new THREE.Color(0xff2200) }  // Reddish
-        },
-        vertexShader: `
-            varying vec2 vUv;
-            varying vec3 vNormal;
-            void main() {
-                vUv = uv;
-                vNormal = normal;
-                // Expand vertices along normal to create a shell
-                vec3 pos = position + normal * 0.08; 
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-            }
-        `,
-        fragmentShader: `
-            uniform float time;
-            uniform vec3 color1;
-            uniform vec3 color2;
-            varying vec2 vUv;
-            
-            // Simple pseudo-random noise
-            float rand(vec2 n) { 
-                return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
-            }
-
-            float noise(vec2 p){
-                vec2 ip = floor(p);
-                vec2 u = fract(p);
-                u = u*u*(3.0-2.0*u);
-                float res = mix(
-                    mix(rand(ip), rand(ip+vec2(1.0,0.0)), u.x),
-                    mix(rand(ip+vec2(0.0,1.0)), rand(ip+vec2(1.0,1.0)), u.x), u.y);
-                return res;
-            }
-
-            void main() {
-                // Scroll noise upwards
-                float n = noise(vUv * 8.0 + vec2(0.0, -time * 3.0));
-                
-                // Create flame tongues
-                float t = noise(vec2(vUv.x * 10.0, time * 2.0));
-                
-                // Intensity fades at top (vUv.y is usually 0..1)
-                // We assume UV mapping is somewhat vertical. If not, this might look chaotic (which is fine for fire)
-                float alpha = n * smoothstep(0.0, 0.2, t) * (1.0 - vUv.y);
-                
-                vec3 color = mix(color2, color1, n + 0.2);
-                
-                gl_FragColor = vec4(color, alpha * 1.5);
-            }
-        `,
-        side: THREE.DoubleSide
-    });
-
-    pieceObj.traverse((child) => {
-        if (child.isMesh) {
-            const flameMesh = new THREE.Mesh(child.geometry, flameMaterial);
-            flameMesh.position.copy(child.position);
-            flameMesh.rotation.copy(child.rotation);
-            flameMesh.scale.copy(child.scale);
-            // Add to scene, not to pieceObj, so we can control it independently
-            // But we need to sync position manually
-            scene.add(flameMesh);
-            flameMeshes.push({ mesh: flameMesh, offset: child.position.clone() });
-        }
-    });
-
-
-    // === ENHANCED SPARK SYSTEM ===
-    const sparkCount = 120; // Increased count for more density
-    const sparks = [];
-    const sparkGeometry = new THREE.SphereGeometry(0.08, 8, 8); // Use spheres for rounder, more natural sparks
-
-    for (let i = 0; i < sparkCount; i++) {
-        // Varied colors: mix of yellow, orange, red, with some white-hot sparks
-        let color;
-        const rand = Math.random();
-        if (rand < 0.2) color = 0xffffff; // White-hot
-        else if (rand < 0.5) color = 0xffff00; // Yellow
-        else if (rand < 0.8) color = 0xffaa00; // Orange
-        else color = 0xff4400; // Red
-
-        const material = new THREE.MeshBasicMaterial({
-            color: color,
-            transparent: true,
-            opacity: 1,
-            blending: THREE.AdditiveBlending // For glow effect
-        });
-
-        const spark = new THREE.Mesh(sparkGeometry, material);
-        spark.position.copy(startPos);
-        // Initial spread with more variation
-        spark.position.x += (Math.random() - 0.5) * 1.2;
-        spark.position.y += (Math.random() - 0.5) * 2.0; // Taller initial spread
-        spark.position.z += (Math.random() - 0.5) * 1.2;
-
-        // Varied initial scale for diversity
-        const initialScale = 0.5 + Math.random() * 0.8;
-        spark.scale.setScalar(initialScale);
-
-        // Velocity with more randomness and some outward burst
-        const velocity = new THREE.Vector3(
-            (Math.random() - 0.5) * 0.15, // Increased horizontal spread
-            Math.random() * 0.12 + 0.08, // Stronger upward bias
-            (Math.random() - 0.5) * 0.15
-        );
-
-        // Add per-spark properties: life, rotation speed, fade rate
-        const life = 1.2 + Math.random() * 0.8; // Varied lifespan
-        const rotSpeed = (Math.random() - 0.5) * 0.2; // Random rotation
-        const gravity = -0.001 - Math.random() * 0.002; // Slight downward pull over time for arcing
-
-        scene.add(spark);
-        sparks.push({
-            mesh: spark,
-            velocity: velocity,
-            life: life,
-            remainingLife: life,
-            rotSpeed: rotSpeed,
-            gravity: gravity
-        });
-    }
-
     return new Promise((resolve) => {
+        const startScale = pieceObj.scale.clone();
+        const startTime = Date.now();
+        const duration = 500;
+
         function animate() {
             const elapsed = Date.now() - startTime;
             const progress = Math.min(elapsed / duration, 1);
 
-            // Ease for scale (slow start, fast finish)
-            const ease = progress * progress;
-
-            // 1. Scale down (Shrink to nothing)
-            const scale = 1 - ease;
-            pieceObj.scale.copy(startScale).multiplyScalar(scale);
-
-            // 2. Rotate (Wobble/Spin)
-            pieceObj.rotation.y += 0.1;
-            pieceObj.rotation.x = Math.sin(elapsed * 0.01) * 0.2; // Wobble
-
-            // 3. Float up slowly
-            pieceObj.position.y = startPos.y + progress * 1.5;
-
-            // 4. Fade out piece
-            const opacity = 1 - progress;
-            materials.forEach(mat => mat.opacity = opacity);
-
-            // 5. Update Flame Shell
-            flameMaterial.uniforms.time.value = elapsed * 0.001;
-            flameMeshes.forEach(item => {
-                item.mesh.position.copy(pieceObj.position).add(item.offset.clone().applyEuler(pieceObj.rotation).multiply(pieceObj.scale));
-                item.mesh.rotation.copy(pieceObj.rotation);
-                item.mesh.scale.copy(pieceObj.scale);
-
-                // Fade flame at the end
-                item.mesh.material.opacity = 1 - ease;
-            });
-
-            // 6. Animate sparks with enhanced details
-            sparks.forEach(s => {
-                if (s.remainingLife > 0) {
-                    // Update velocity with gravity for arcing paths
-                    s.velocity.y += s.gravity;
-
-                    // Move
-                    s.mesh.position.add(s.velocity);
-
-                    // Rotate for tumbling effect
-                    s.mesh.rotation.x += s.rotSpeed;
-                    s.mesh.rotation.y += s.rotSpeed * 0.7;
-
-                    // Scale down over life (fizzle out)
-                    const lifeFraction = s.remainingLife / s.life;
-                    s.mesh.scale.setScalar(lifeFraction * (0.5 + Math.random() * 0.5)); // Add flicker to scale
-
-                    // Fade opacity with flicker
-                    const flicker = 1 + Math.sin(elapsed * 0.02 + Math.random()) * 0.2;
-                    s.mesh.material.opacity = lifeFraction * flicker;
-
-                    // Decrease life
-                    s.remainingLife -= 0.015; // Slightly slower decay for longer visibility
-                } else {
-                    s.mesh.visible = false;
-                }
-            });
+            // Shrink and spin
+            const scale = 1 - progress;
+            pieceObj.scale.set(startScale.x * scale, startScale.y * scale, startScale.z * scale);
+            pieceObj.rotation.y += 0.2;
 
             if (progress < 1) {
                 requestAnimationFrame(animate);
             } else {
-                pieceObj.removeFromParent();
-                // Clean up materials
-                materials.forEach(mat => mat.dispose());
-                flameMaterial.dispose();
-
-                // Clean up meshes
-                flameMeshes.forEach(item => {
-                    scene.remove(item.mesh);
-                    item.mesh.geometry.dispose();
-                });
-
-                // Clean up sparks
-                sparks.forEach(s => {
-                    scene.remove(s.mesh);
-                    s.mesh.geometry.dispose();
-                    s.mesh.material.dispose();
-                });
+                if (pieceObj.parent) pieceObj.parent.remove(pieceObj);
                 resolve();
             }
         }
