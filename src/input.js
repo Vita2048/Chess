@@ -11,6 +11,9 @@ let highlightedSquares = [];
 let selectedHighlight = null;
 let selectedPieceGlow = null;
 let moveHighlightAnimations = [];
+let currentHoveredSquare = null;
+let hoverHighlight = null;
+let hoverFlashingInterval = null;
 
 export function initInput(cam, sc) {
     camera = cam;
@@ -20,6 +23,7 @@ export function initInput(cam, sc) {
 
     console.log("Input initialized! Click listener attached.");
     window.addEventListener('click', onMouseClick, false);
+    window.addEventListener('mousemove', onMouseMove, false);
 
     initToolbar();
 }
@@ -38,6 +42,7 @@ function initToolbar() {
         syncBoardVisuals(game.board());
         clearHighlights();
         clearSelected();
+        clearHoverHighlight();
     });
 
     document.getElementById('btn-save-game').addEventListener('click', () => {
@@ -85,36 +90,105 @@ function onMouseClick(event) {
 
     raycaster.setFromCamera(mouse, camera);
 
-    const intersects = raycaster.intersectObjects(scene.children, true);
-    console.log("Intersects:", intersects.length);
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -boardY);
+    const intersection = new THREE.Vector3();
 
-    if (intersects.length > 0) {
-        let clickedObject = intersects[0].object;
-        console.log("Clicked object:", clickedObject.name, "Type:", clickedObject.type, "Visible:", clickedObject.visible);
+    if (raycaster.ray.intersectPlane(plane, intersection)) {
+        handleBoardClick(intersection);
+    }
+}
 
-        // Debug hierarchy
-        let p = clickedObject;
-        let path = [];
-        while (p) {
-            path.push(p.name || p.type);
-            p = p.parent;
-        }
-        console.log("Click Hierarchy:", path.join(" -> "));
+function onMouseMove(event) {
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
-        let pieceRoot = clickedObject;
-        while (pieceRoot.parent && pieceRoot.parent !== scene && !pieceRoot.userData.square) {
-            pieceRoot = pieceRoot.parent;
-        }
+    raycaster.setFromCamera(mouse, camera);
 
-        console.log("Final pieceRoot:", pieceRoot.name, "Has square?", !!pieceRoot.userData.square, "Square:", pieceRoot.userData.square);
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -boardY);
+    const intersection = new THREE.Vector3();
 
-        if (pieceRoot.userData.square) {
-            handleSquareClick(pieceRoot.userData.square);
-        } else {
-            console.log("No square found, trying handleBoardClick");
-            handleBoardClick(intersects[0].point);
+    if (raycaster.ray.intersectPlane(plane, intersection)) {
+        handleCellHover(intersection);
+    } else {
+        clearHoverHighlight();
+    }
+}
+
+function handleCellHover(point) {
+    let closestSquare = null;
+    let minDist = Infinity;
+
+    for (const [sq, pos] of Object.entries(boardSquares)) {
+        const dist = point.distanceTo(pos);
+        const avgStep = (stepRank + stepFile) / 2;
+        if (dist < avgStep * 0.8) {
+            if (dist < minDist) {
+                minDist = dist;
+                closestSquare = sq;
+            }
         }
     }
+
+    if (closestSquare) {
+        updateHoverHighlight(closestSquare);
+    } else {
+        clearHoverHighlight();
+    }
+}
+
+function updateHoverHighlight(square) {
+    if (currentHoveredSquare === square) return;
+    clearHoverHighlight();
+    currentHoveredSquare = square;
+
+    if (game.turn() !== 'w') return;
+
+    const piece = game.get(square);
+    if (!piece || piece.color !== 'w') return;
+
+    let flashing = true;
+    if (selectedSquare && selectedSquare === square) {
+        return;
+    }
+
+    showHoverHighlight(square, flashing);
+}
+
+function showHoverHighlight(square, flashing) {
+    clearHoverHighlight();
+
+    const pos = boardSquares[square];
+    const avgStep = (stepRank + stepFile) / 2;
+    const size = avgStep * 1.22;
+
+    const geometry = new THREE.PlaneGeometry(size, size);
+    const mesh = new THREE.Mesh(geometry, highlightMaterial.clone());
+
+    mesh.position.copy(pos);
+    mesh.position.y = boardY + 0.01;
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(BOARD_ROTATION_Y));
+
+    scene.add(mesh);
+    hoverHighlight = mesh;
+
+    if (flashing) {
+        hoverFlashingInterval = setInterval(() => {
+            mesh.visible = !mesh.visible;
+        }, 250);
+    }
+}
+
+function clearHoverHighlight() {
+    if (hoverHighlight) {
+        scene.remove(hoverHighlight);
+        hoverHighlight = null;
+    }
+    if (hoverFlashingInterval) {
+        clearInterval(hoverFlashingInterval);
+        hoverFlashingInterval = null;
+    }
+    currentHoveredSquare = null;
 }
 
 async function handleSquareClick(square) {
@@ -123,6 +197,19 @@ async function handleSquareClick(square) {
     // Prevent user input during AI's turn (assuming user is white)
     if (game.turn() !== 'w') {
         console.log("Ignoring click during AI's turn");
+        return;
+    }
+
+    const piece = game.get(square);
+    console.log("handleSquareClick: square =", square, "current turn =", game.turn(), "piece =", piece ? piece.color + piece.type : 'none');
+
+    // If clicking on a different white piece while another is selected, select the new one
+    if (piece && piece.color === game.turn() && selectedSquare && selectedSquare !== square) {
+        console.log("Reselecting piece at", square);
+        selectedSquare = square;
+        highlightSelected(square);
+        highlightMoves(square);
+        clearHoverHighlight();
         return;
     }
 
@@ -151,18 +238,18 @@ async function handleSquareClick(square) {
         return; // Don't continue to piece selection after executing a move
     }
 
-    const piece = game.get(square);
-    console.log("handleSquareClick: square =", square, "current turn =", game.turn(), "piece =", piece ? piece.color + piece.type : 'none');
     if (piece && piece.color === game.turn()) {
         console.log("Selecting piece at", square);
         selectedSquare = square;
         highlightSelected(square);
         highlightMoves(square);
+        clearHoverHighlight();
     } else {
         console.log("Not selecting piece at", square, "- either no piece or wrong color/turn");
         selectedSquare = null;
         clearHighlights();
         clearSelected();
+        clearHoverHighlight();
     }
 }
 
@@ -199,6 +286,8 @@ function showNewGameModal() {
         syncBoardVisuals(game.board());
         clearHighlights();
         clearSelected();
+        clearHoverHighlight();
+        clearHoverHighlight();
     };
 
     const noHandler = () => {
@@ -354,6 +443,7 @@ async function executeMove(move) {
             selectedSquare = null;
             clearHighlights();
             clearSelected();
+            clearHoverHighlight();
         }
     } catch (e) {
         // Invalid move
@@ -362,6 +452,8 @@ async function executeMove(move) {
         selectedSquare = null;
         clearHighlights();
         clearSelected();
+        clearHoverHighlight();
+        clearHoverHighlight();
     }
 }
 
@@ -415,7 +507,7 @@ function handleBoardClick(point) {
         const dist = point.distanceTo(pos);
         // Use average step size for tolerance
         const avgStep = (stepRank + stepFile) / 2;
-        if (dist < avgStep * 0.3) {
+        if (dist < avgStep * 0.8) {
             if (dist < minDist) {
                 minDist = dist;
                 closestSquare = sq;
@@ -547,30 +639,67 @@ function highlightMoves(square) {
 
 function highlightSelected(square) {
     clearSelected();
-    const pieceObj = pieces[square];
+    const pos = boardSquares[square];
+    const avgStep = (stepRank + stepFile) / 2;
+    const size = avgStep * 1.22;
 
-    if (pieceObj) {
-        // === STATIC BLUE GLOW ON SELECTED PIECE (no selection box) ===
-        const originalMaterials = [];
-        pieceObj.traverse((child) => {
-            if (child.isMesh && child.material) {
-                originalMaterials.push({
-                    mesh: child,
-                    material: child.material
-                });
-
-                child.material = child.material.clone();
-                child.material.emissive = new THREE.Color(0x114488);
-                child.material.emissiveIntensity = 1.75;
-                if (child.material.color) {
-                    child.material.color = new THREE.Color(0x5588bb);
-                }
-                child.material.needsUpdate = true;
+    const geometry = new THREE.PlaneGeometry(size, size);
+    const material = new THREE.ShaderMaterial({
+        uniforms: {
+            time: { value: 0 }
+        },
+        transparent: true,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
             }
-        });
+        `,
+        fragmentShader: `
+            uniform float time;
+            varying vec2 vUv;
 
-        selectedPieceGlow = { originalMaterials: originalMaterials };
-    }
+            void main() {
+                vec2 uv = vUv;
+                vec2 center = abs(uv - 0.5);
+                float box = max(center.x, center.y);
+
+                float inner = 0.32;
+                float outer = 0.50;
+
+                float border = 1.0 - smoothstep(inner, inner + 0.05, box);
+                border += smoothstep(outer - 0.12, outer, box);
+
+                vec3 darkBlue   = vec3(0.00, 0.02, 0.18);
+                vec3 midBlue    = vec3(0.00, 0.10, 0.45);
+                vec3 brightBlue = vec3(0.10, 0.35, 0.95);
+
+                vec3 color = mix(darkBlue, midBlue, border);
+                color = mix(color, brightBlue, border * 1.2);
+
+                float intensity = border * 1.8;
+
+                float alpha = intensity * 28.0;
+
+                if (box > 0.52) discard;
+
+                gl_FragColor = vec4(color, alpha);
+            }
+        `
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+
+    mesh.position.copy(pos);
+    mesh.position.y = boardY + 0.01;
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(BOARD_ROTATION_Y));
+
+    scene.add(mesh);
+    selectedHighlight = mesh;
 }
 function clearHighlights() {
     highlightedSquares.forEach(mesh => scene.remove(mesh));
