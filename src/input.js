@@ -287,7 +287,8 @@ function showNewGameModal() {
         clearHighlights();
         clearSelected();
         clearHoverHighlight();
-        clearHoverHighlight();
+        const statusDiv = document.getElementById('top-center-status');
+        if (statusDiv) statusDiv.innerText = "White's Turn";
     };
 
     const noHandler = () => {
