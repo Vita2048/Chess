@@ -14,6 +14,23 @@ let moveHighlightAnimations = [];
 let currentHoveredSquare = null;
 let hoverHighlight = null;
 let hoverFlashingInterval = null;
+let currentDifficulty = 'moderate';
+let currentTurnText = 'White\'s Turn';
+
+function updateStatusDisplay() {
+    // Update difficulty display
+    const difficultyDiv = document.getElementById('difficulty-display');
+    if (difficultyDiv) {
+        const level = currentDifficulty.charAt(0).toUpperCase() + currentDifficulty.slice(1);
+        difficultyDiv.innerText = `Difficulty: ${level}`;
+    }
+
+    // Update turn status
+    const statusDiv = document.getElementById('top-center-status');
+    if (statusDiv) {
+        statusDiv.innerText = currentTurnText;
+    }
+}
 
 export function initInput(cam, sc) {
     camera = cam;
@@ -26,6 +43,7 @@ export function initInput(cam, sc) {
     window.addEventListener('mousemove', onMouseMove, false);
 
     initToolbar();
+    updateStatusDisplay();
 }
 
 function initToolbar() {
@@ -275,30 +293,43 @@ function showNewGameModal() {
     const modal = document.getElementById('new-game-modal');
     modal.classList.remove('hidden');
 
-    const yesBtn = document.getElementById('new-game-yes');
-    const noBtn = document.getElementById('new-game-no');
+    const easyBtn = document.getElementById('difficulty-easy');
+    const moderateBtn = document.getElementById('difficulty-moderate');
+    const hardBtn = document.getElementById('difficulty-hard');
+    const cancelBtn = document.getElementById('new-game-cancel');
 
-    const yesHandler = () => {
+    const startNewGame = (difficulty) => {
         modal.classList.add('hidden');
-        yesBtn.removeEventListener('click', yesHandler);
-        noBtn.removeEventListener('click', noHandler);
+        currentDifficulty = difficulty;
         resetGame();
         syncBoardVisuals(game.board());
         clearHighlights();
         clearSelected();
         clearHoverHighlight();
-        const statusDiv = document.getElementById('top-center-status');
-        if (statusDiv) statusDiv.innerText = "White's Turn";
+        updateStatusDisplay();
+        // Remove listeners
+        easyBtn.removeEventListener('click', easyHandler);
+        moderateBtn.removeEventListener('click', moderateHandler);
+        hardBtn.removeEventListener('click', hardHandler);
+        cancelBtn.removeEventListener('click', cancelHandler);
     };
 
-    const noHandler = () => {
+    const easyHandler = () => startNewGame('easy');
+    const moderateHandler = () => startNewGame('moderate');
+    const hardHandler = () => startNewGame('hard');
+
+    const cancelHandler = () => {
         modal.classList.add('hidden');
-        yesBtn.removeEventListener('click', yesHandler);
-        noBtn.removeEventListener('click', noHandler);
+        easyBtn.removeEventListener('click', easyHandler);
+        moderateBtn.removeEventListener('click', moderateHandler);
+        hardBtn.removeEventListener('click', hardHandler);
+        cancelBtn.removeEventListener('click', cancelHandler);
     };
 
-    yesBtn.addEventListener('click', yesHandler);
-    noBtn.addEventListener('click', noHandler);
+    easyBtn.addEventListener('click', easyHandler);
+    moderateBtn.addEventListener('click', moderateHandler);
+    hardBtn.addEventListener('click', hardHandler);
+    cancelBtn.addEventListener('click', cancelHandler);
 }
 
 function showGameOverOverlay(message) {
@@ -376,15 +407,15 @@ async function executeMove(move) {
             if (await checkGameOver()) return;
 
             // Trigger AI move
-            const statusDiv = document.getElementById('top-center-status');
-            if (statusDiv) statusDiv.innerText = "Computer is thinking...";
+            currentTurnText = "Computer is thinking...";
+            updateStatusDisplay();
 
             // Show calculation video
             showCalculationVideo();
 
             // Use Web Worker for AI calculation to keep UI responsive
             const worker = new Worker('/Chess/aiWorker.js');
-            worker.postMessage({ fen: game.fen() });
+            worker.postMessage({ fen: game.fen(), difficulty: currentDifficulty });
             worker.onmessage = async function (e) {
                 const bestMove = e.data;
                 worker.terminate(); // Clean up worker
@@ -422,7 +453,8 @@ async function executeMove(move) {
 
                     // Hide calculation video and update status after move completes
                     hideCalculationVideo();
-                    if (statusDiv) statusDiv.innerText = "White's Turn";
+                    currentTurnText = "White's Turn";
+                    updateStatusDisplay();
                     checkGameOver();
                 } else {
                     // AI has no moves? Check game over again

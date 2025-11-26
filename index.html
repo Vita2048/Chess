@@ -19,6 +19,7 @@
       <button id="btn-undo">Undo</button>
       <input type="file" id="file-input" accept=".xml" style="display: none;" />
     </div>
+    <div id="difficulty-display">Difficulty: Moderate</div>
   </div>
   <div id="top-center-status">White's Turn</div>
   <div id="promotion-modal" class="hidden">
@@ -34,11 +35,14 @@
   </div>
   <div id="new-game-modal" class="hidden">
     <div class="modal-content">
-      <h3>Start a New Game?</h3>
-      <p>Unsaved progress will be lost.</p>
+      <h3>Select difficulty</h3>
+      <div class="difficulty-buttons">
+        <button id="difficulty-easy">Easy</button>
+        <button id="difficulty-moderate">Moderate</button>
+        <button id="difficulty-hard">Hard</button>
+      </div>
       <div class="modal-buttons">
-        <button id="new-game-yes">Yes</button>
-        <button id="new-game-no">No</button>
+        <button id="new-game-cancel">Cancel</button>
       </div>
     </div>
   </div>

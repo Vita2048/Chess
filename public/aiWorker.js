@@ -127,8 +127,21 @@ function getAbsoluteValue(piece, isWhite, x, y) {
     return value + positionValue;
 }
 
-function getBestMove(game) {
-    const depth = 3;
+function getBestMove(game, difficulty) {
+    let depth;
+    switch (difficulty) {
+        case 'easy':
+            depth = 1;
+            break;
+        case 'moderate':
+            depth = 3;
+            break;
+        case 'hard':
+            depth = 5;
+            break;
+        default:
+            depth = 3;
+    }
     const isMaximizingPlayer = game.turn() === 'w';
     const bestMove = minimaxRoot(depth, isMaximizingPlayer, game);
     return bestMove;
@@ -205,7 +218,8 @@ function minimax(depth, alpha, beta, isMaximizingPlayer, game) {
 // Worker message handler
 onmessage = function(e) {
     const fen = e.data.fen;
+    const difficulty = e.data.difficulty;
     const game = new Chess(fen);
-    const bestMove = getBestMove(game);
+    const bestMove = getBestMove(game, difficulty);
     postMessage(bestMove);
 };

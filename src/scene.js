@@ -440,8 +440,9 @@ function updateVideoLayout() {
     const videoHeight = calculationVideo.videoHeight || 9;
     const aspect = videoWidth / videoHeight;
 
-    // Target: 200px height, Top Center
+    // Target: 200px height, below top-center-status (which is at ~20px)
     const targetPixelHeight = 200;
+    const targetTopPixel = 80; // Position below status
     const distance = 5; // Distance from camera
 
     // Calculate visible height at the given distance
@@ -460,12 +461,13 @@ function updateVideoLayout() {
     // Apply scale
     calculationMesh.scale.set(width3D, height3D, 1);
 
-    // Position: Top Center
-    // Top of the view is visibleHeight / 2
-    // We want the top edge of the mesh to be at visibleHeight / 2
-    // Mesh center Y = Top Y - Half Mesh Height
-    const topY = visibleHeight / 2;
-    const meshY = topY - (height3D / 2);
+    // Position: Below top-center-status
+    // Convert targetTopPixel to 3D Y coordinate
+    // Top of view is visibleHeight / 2, bottom is -visibleHeight / 2
+    const topY3D = visibleHeight / 2;
+    const pixelTo3D = visibleHeight / window.innerHeight;
+    const targetTopY3D = topY3D - (targetTopPixel * pixelTo3D);
+    const meshY = targetTopY3D - (height3D / 2); // Center of mesh
 
     calculationMesh.position.set(0, meshY, -distance);
 
@@ -487,12 +489,6 @@ export function showCalculationVideo() {
         calculationVideo.play().catch(e => console.error("Video play failed:", e));
         calculationMesh.visible = true;
         if (boardGlowMesh) boardGlowMesh.visible = true;
-
-        // Position status below the animation
-        const statusDiv = document.getElementById('top-center-status');
-        if (statusDiv) {
-            statusDiv.style.top = '240px'; // Below the 200px video + some margin
-        }
     }
 }
 
@@ -503,12 +499,6 @@ export function hideCalculationVideo() {
         calculationMesh.visible = false;
         if (overlayMesh) overlayMesh.visible = false;
         if (boardGlowMesh) boardGlowMesh.visible = false;
-
-        // Reset status position
-        const statusDiv = document.getElementById('top-center-status');
-        if (statusDiv) {
-            statusDiv.style.top = '20px';
-        }
     }
 }
 

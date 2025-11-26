@@ -22,6 +22,18 @@ body {
   backdrop-filter: blur(5px);
 }
 
+#difficulty-display {
+  margin-top: 10px;
+  font-size: 1rem;
+  font-weight: bold;
+  color: white;
+  text-align: center;
+  background: rgba(32, 32, 32, 0.8);
+  padding: 5px 10px;
+  border-radius: 6px;
+  backdrop-filter: blur(5px);
+}
+
 #top-center-status {
   position: absolute;
   top: 20px;
@@ -104,6 +116,60 @@ body {
 
 #new-game-modal.hidden {
    display: none;
+}
+
+.difficulty-buttons {
+   display: flex;
+   gap: 1rem;
+   margin-top: 1rem;
+   justify-content: center;
+}
+
+.difficulty-buttons button {
+   padding: 12px 24px;
+   font-size: 1rem;
+   font-weight: 700;
+   cursor: pointer;
+
+   /* 3D Gradient & Bevel */
+   background: linear-gradient(to bottom, #5a5a5a, #3a3a3a);
+   color: #ffffff;
+
+   /* Borders for depth */
+   border: 1px solid #222;
+   border-top: 1px solid #777;
+   /* Highlight top edge */
+   border-bottom: 3px solid #111;
+   /* Thicker bottom for 3D effect */
+
+   border-radius: 8px;
+   font-family: 'Inter', sans-serif;
+
+   /* Shadow for lift */
+   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+
+   text-transform: uppercase;
+   letter-spacing: 1px;
+   text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.5);
+   /* Inset text */
+
+   transition: all 0.1s ease-out;
+}
+
+.difficulty-buttons button:hover {
+   background: linear-gradient(to bottom, #666, #444);
+   transform: translateY(-1px);
+   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.difficulty-buttons button:active {
+   /* Pressed state */
+   background: linear-gradient(to bottom, #333, #222);
+   transform: translateY(2px);
+   /* Move down to simulate press */
+   border-bottom: 1px solid #111;
+   /* Reduce bottom border thickness */
+   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .modal-buttons {
