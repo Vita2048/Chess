@@ -131,13 +131,13 @@ function getBestMove(game, difficulty) {
     let depth;
     switch (difficulty) {
         case 'easy':
-            depth = 1;
+            depth = 2;
             break;
         case 'moderate':
             depth = 3;
             break;
         case 'hard':
-            depth = 5;
+            depth = 4;
             break;
         default:
             depth = 3;
