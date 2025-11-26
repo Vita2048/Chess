@@ -1,5 +1,3 @@
-// aiWorker.js - Web Worker for AI calculations
-
 importScripts('https://cdn.jsdelivr.net/npm/chess.js@0.12.1/chess.min.js');
 
 // Piece values
@@ -13,7 +11,6 @@ const pieceValues = {
 };
 
 // Piece-Square Tables (simplified)
-// These are for White. For Black, we mirror the rank index.
 const pawnEvalWhite = [
     [0, 0, 0, 0, 0, 0, 0, 0],
     [50, 50, 50, 50, 50, 50, 50, 50],
@@ -80,8 +77,44 @@ const kingEvalWhite = [
     [20, 30, 10, 0, 0, 10, 30, 20]
 ];
 
+// --- NEW HEURISTIC: Order Moves to improve Alpha-Beta Pruning ---
+// Prioritize Captures: MVV-LVA (Most Valuable Victim - Least Valuable Attacker)
+function orderMoves(moves, game) {
+    return moves.sort((a, b) => {
+        let scoreA = 0;
+        let scoreB = 0;
+
+        // Prioritize captures
+        if (a.captured) {
+            scoreA = 10 * getPieceValueSimple(a.captured) - getPieceValueSimple(a.piece);
+        }
+        if (b.captured) {
+            scoreB = 10 * getPieceValueSimple(b.captured) - getPieceValueSimple(b.piece);
+        }
+        
+        // Prioritize promotions
+        if (a.promotion) scoreA += 1000;
+        if (b.promotion) scoreB += 1000;
+
+        // Prioritize checks (often forces a response, narrowing search tree)
+        // Note: Chess.js move object doesn't always flag check immediately without executing,
+        // but 'san' (Standard Algebraic Notation) usually contains '+' for checks.
+        if (a.san.includes('+')) scoreA += 500;
+        if (b.san.includes('+')) scoreB += 500;
+
+        return scoreB - scoreA;
+    });
+}
+
+function getPieceValueSimple(pieceType) {
+    if (!pieceType) return 0;
+    // We only need relative values for sorting, so simple integer values work best
+    const values = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 100 };
+    return values[pieceType] || 0;
+}
+// -------------------------------------------------------------
+
 function evaluateBoard(game) {
-    // Check for game over states
     if (game.in_checkmate()) {
         return game.turn() === 'w' ? -20000 : 20000;
     }
@@ -130,17 +163,10 @@ function getAbsoluteValue(piece, isWhite, x, y) {
 function getBestMove(game, difficulty) {
     let depth;
     switch (difficulty) {
-        case 'easy':
-            depth = 2;
-            break;
-        case 'moderate':
-            depth = 3;
-            break;
-        case 'hard':
-            depth = 4;
-            break;
-        default:
-            depth = 3;
+        case 'easy': depth = 2; break;
+        case 'moderate': depth = 3; break;
+        case 'hard': depth = 4; break;
+        default: depth = 3;
     }
     const isMaximizingPlayer = game.turn() === 'w';
     const bestMove = minimaxRoot(depth, isMaximizingPlayer, game);
@@ -148,11 +174,14 @@ function getBestMove(game, difficulty) {
 }
 
 function minimaxRoot(depth, isMaximizingPlayer, game) {
-    const newGameMoves = game.moves({ verbose: true });
+    // Generate moves with verbose: true to get details on captures/promotions
+    let newGameMoves = game.moves({ verbose: true });
+    
+    // Sort moves to check the most promising ones first
+    newGameMoves = orderMoves(newGameMoves, game);
+
     let bestMove = -9999;
     let bestMoveFound = undefined;
-
-    newGameMoves.sort(() => Math.random() - 0.5);
 
     if (isMaximizingPlayer) {
         bestMove = -Infinity;
@@ -186,7 +215,11 @@ function minimax(depth, alpha, beta, isMaximizingPlayer, game) {
         return evaluateBoard(game);
     }
 
-    const newGameMoves = game.moves();
+    let newGameMoves = game.moves({ verbose: true });
+    
+    // HEURISTIC: Order moves here too! 
+    // This is crucial for recursive pruning deep in the tree.
+    newGameMoves = orderMoves(newGameMoves, game);
 
     if (isMaximizingPlayer) {
         let bestMove = -Infinity;
@@ -194,9 +227,11 @@ function minimax(depth, alpha, beta, isMaximizingPlayer, game) {
             game.move(newGameMoves[i]);
             bestMove = Math.max(bestMove, minimax(depth - 1, alpha, beta, !isMaximizingPlayer, game));
             game.undo();
+            
+            // Alpha Beta Pruning
             alpha = Math.max(alpha, bestMove);
             if (beta <= alpha) {
-                return bestMove;
+                return bestMove; // Pruning happens here
             }
         }
         return bestMove;
@@ -206,9 +241,11 @@ function minimax(depth, alpha, beta, isMaximizingPlayer, game) {
             game.move(newGameMoves[i]);
             bestMove = Math.min(bestMove, minimax(depth - 1, alpha, beta, !isMaximizingPlayer, game));
             game.undo();
+            
+            // Alpha Beta Pruning
             beta = Math.min(beta, bestMove);
             if (beta <= alpha) {
-                return bestMove;
+                return bestMove; // Pruning happens here
             }
         }
         return bestMove;
