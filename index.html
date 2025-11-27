@@ -1,12 +1,6 @@
-<!DOCTYPE html>
-<html lang="en">
-
-<head>
-  <meta charset="UTF-8" />
-  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>3D Chess</title>
-  <link rel="stylesheet" href="./style.css" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>3D Chess</title>
+<link rel="stylesheet" href="./style.css" />
 </head>
 
 <body>
@@ -22,6 +16,7 @@
     <div id="difficulty-display">Difficulty: Moderate</div>
   </div>
   <div id="top-center-status">White's Turn</div>
+
   <div id="promotion-modal" class="hidden">
     <div class="modal-content">
       <h3>Choose Promotion</h3>
@@ -33,22 +28,38 @@
       </div>
     </div>
   </div>
+
   <div id="new-game-modal" class="hidden">
     <div class="modal-content">
-      <h3>Select difficulty</h3>
+      <h3>Select Difficulty</h3>
+
+      <h4 class="section-title">Local Heuristics</h4>
       <div class="difficulty-buttons">
         <button id="difficulty-easy">Easy</button>
         <button id="difficulty-moderate">Moderate</button>
         <button id="difficulty-hard">Hard</button>
       </div>
+
+      <h4 class="section-title">Stockfish World-Class Engine</h4>
+      <div class="stockfish-grid">
+        <button class="stockfish-btn" data-level="5">SL5 Novice</button>
+        <button class="stockfish-btn" data-level="7">SL7 Moderate</button>
+        <button class="stockfish-btn" data-level="10">SL10 Advanced</button>
+        <button class="stockfish-btn" data-level="15">SL15 Expert</button>
+        <button class="stockfish-btn" data-level="18">SL18 Unbeatable</button>
+        <button class="stockfish-btn" data-level="20">SL20 God-Mode</button>
+      </div>
+
       <div class="modal-buttons">
         <button id="new-game-cancel">Cancel</button>
       </div>
     </div>
   </div>
+
   <div id="game-over-overlay" class="hidden">
     <div id="game-over-message"></div>
   </div>
+
   <div id="loading-overlay" class="hidden">
     <div id="loading-content">
       <div id="loading-text">Loading 3D Model</div>
