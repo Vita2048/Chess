@@ -644,27 +644,31 @@ function calibrateBoardGrid() {
     console.log("Board grid calibrated successfully");
 }
 
+// In scene.js
+
 export function syncBoardVisuals(gameBoard) {
-    // 1. Remove all existing pieces from scene
-    for (const sq in pieces) {
-        if (pieces[sq]) {
-            // Fix: Remove from parent (could be scene OR model)
-            if (pieces[sq].parent) {
-                pieces[sq].parent.remove(pieces[sq]);
+    // 1. Remove all existing pieces from scene SAFELY
+    const squares = Object.keys(pieces); // Get all keys first to avoid iteration bugs
+    for (const sq of squares) {
+        const piece = pieces[sq];
+        if (piece) {
+            if (piece.parent) {
+                piece.parent.remove(piece);
             }
-            delete pieces[sq];
+            // Dispose of geometries/materials if necessary, but removing from scene is enough for now
         }
+        delete pieces[sq];
     }
 
     // 2. Iterate through the game board (8x8 array)
-    // gameBoard is array of rows (0=Rank 8, 7=Rank 1)
+    // ... rest of the function remains the same ...
     const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 
     for (let r = 0; r < 8; r++) {
         for (let c = 0; c < 8; c++) {
             const piece = gameBoard[r][c];
             if (piece) {
-                const rank = 8 - r; // Row 0 is Rank 8
+                const rank = 8 - r;
                 const file = files[c];
                 const square = file + rank;
 
