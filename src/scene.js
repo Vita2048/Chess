@@ -647,31 +647,45 @@ function calibrateBoardGrid() {
 // In scene.js
 
 export function syncBoardVisuals(gameBoard) {
-    // 1. Remove all existing pieces from scene SAFELY
-    const squares = Object.keys(pieces); // Get all keys first to avoid iteration bugs
-    for (const sq of squares) {
-        const piece = pieces[sq];
-        if (piece) {
-            if (piece.parent) {
-                piece.parent.remove(piece);
-            }
-            // Dispose of geometries/materials if necessary, but removing from scene is enough for now
+    // === 1. AGGRESSIVE CLEANUP ===
+    // Instead of only checking the 'pieces' dictionary, we look at the Scene's children.
+    // This removes any "ghost" pieces that might be lingering visually but missing from the dictionary.
+    
+    // Create a list of objects to remove to avoid modifying the scene while iterating
+    const toRemove = [];
+    
+    scene.traverse((child) => {
+        // Identify chess pieces by their userData
+        if (child.userData && child.userData.type && (child.userData.color === 'w' || child.userData.color === 'b')) {
+            // It's a piece! Mark it for removal.
+            toRemove.push(child);
         }
-        delete pieces[sq];
+    });
+
+    // Actually remove them
+    toRemove.forEach(child => {
+        if (child.parent) {
+            child.parent.remove(child);
+        }
+    });
+
+    // Clear the internal dictionary completely
+    for (const key in pieces) {
+        delete pieces[key];
     }
 
-    // 2. Iterate through the game board (8x8 array)
-    // ... rest of the function remains the same ...
+    // === 2. REBUILD VISUALS FROM LOGIC ===
     const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 
     for (let r = 0; r < 8; r++) {
         for (let c = 0; c < 8; c++) {
-            const piece = gameBoard[r][c];
+            const piece = gameBoard[r][c]; // This comes from chess.js (game.board())
             if (piece) {
                 const rank = 8 - r;
                 const file = files[c];
                 const square = file + rank;
 
+                // Create the key for the template (e.g., "w_p", "b_k")
                 const key = piece.color + '_' + piece.type;
                 const template = pieceTemplates[key];
 
@@ -686,10 +700,14 @@ export function syncBoardVisuals(gameBoard) {
                     // Adjust Y based on bounding box
                     newPiece.updateMatrixWorld(true);
                     const bbox = new THREE.Box3().setFromObject(newPiece);
+                    // Use the newly cloned piece's bbox to ensure it sits perfectly on the board
                     const heightAdjustment = boardY - bbox.min.y;
                     newPiece.position.y += heightAdjustment;
 
+                    // Re-assign userData so we can identify it later
                     newPiece.userData = { square, color: piece.color, type: piece.type };
+                    
+                    // Update the dictionary
                     pieces[square] = newPiece;
 
                     // Enable shadows
@@ -703,6 +721,8 @@ export function syncBoardVisuals(gameBoard) {
             }
         }
     }
+    
+    console.log("Board visuals synced. Current pieces:", Object.keys(pieces));
 }
 
 function animate() {
