@@ -16,6 +16,7 @@ let hoverHighlight = null;
 let hoverFlashingInterval = null;
 let currentDifficulty = 'moderate';
 let currentTurnText = 'White\'s Turn';
+let isMoveInProgress = false;
 
 function updateStatusDisplay() {
     // Update difficulty display
@@ -169,7 +170,7 @@ function updateHoverHighlight(square) {
     clearHoverHighlight();
     currentHoveredSquare = square;
 
-    if (game.turn() !== 'w') return;
+    if (isMoveInProgress || game.turn() !== 'w') return;
 
     const piece = game.get(square);
     if (!piece || piece.color !== 'w') return;
@@ -222,9 +223,9 @@ function clearHoverHighlight() {
 async function handleSquareClick(square) {
     console.log("Clicked square:", square);
 
-    // Prevent user input during AI's turn (assuming user is white)
-    if (game.turn() !== 'w') {
-        console.log("Ignoring click during AI's turn");
+    // Prevent user input during animations or when it's not their turn
+    if (isMoveInProgress || game.turn() !== 'w') {
+        console.log("Ignoring click during animation or opponent's turn");
         return;
     }
 
@@ -439,6 +440,7 @@ async function executeMove(move) {
                 const bestMove = e.data;
                 worker.terminate(); // Clean up worker
                 if (bestMove) {
+                    isMoveInProgress = true;
                     console.log("AI executing move:", bestMove);
                     const result = makeMove(bestMove);
                     console.log("AI move result:", result);
@@ -474,6 +476,7 @@ async function executeMove(move) {
                     hideCalculationVideo();
                     currentTurnText = "White's Turn";
                     updateStatusDisplay();
+                    isMoveInProgress = false;
                     checkGameOver();
                 } else {
                     // AI has no moves? Check game over again
@@ -777,6 +780,7 @@ function clearSelected() {
 
 function movePieceVisual(from, to, promotionType, animate = false) {
     return new Promise((resolve) => {
+        isMoveInProgress = true;
         const pieceObj = pieces[from];
         const targetPos = boardSquares[to];
         const promises = [];
@@ -845,7 +849,10 @@ function movePieceVisual(from, to, promotionType, animate = false) {
             }
         }
 
-        Promise.all(promises).then(() => resolve());
+        Promise.all(promises).then(() => {
+            isMoveInProgress = false;
+            resolve();
+        });
     });
 }
 
@@ -1060,7 +1067,12 @@ function finalizeMove(pieceObj, to, from, promotionType, finalPosition) {
             newPiece.position.copy(finalPosition);
             newPiece.userData = { square: to, color: color, type: promotionType };
             pieces[to] = newPiece;
-
+    
+            // Recalculate Y position based on new piece's bounding box to ensure it sits on the board
+            newPiece.updateMatrixWorld(true);
+            const bbox = new THREE.Box3().setFromObject(newPiece);
+            newPiece.position.y = boardY - bbox.min.y;
+    
             // Enable shadows
             newPiece.traverse((child) => {
                 if (child.isMesh) {
