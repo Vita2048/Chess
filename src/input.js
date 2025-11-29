@@ -57,6 +57,18 @@ export function initInput(cam, sc) {
     updateStatusDisplay();
 }
 
+function updateUndoButton() {
+    const undoBtn = document.getElementById('btn-undo');
+    const hasHistory = game.history().length > 0;
+    const isWhiteTurn = game.turn() === 'w';
+    const noAnimation = !isMoveInProgress;
+
+    const shouldEnable = hasHistory && isWhiteTurn && noAnimation;
+    undoBtn.disabled = !shouldEnable;
+
+    console.log('updateUndoButton:', { hasHistory, isWhiteTurn, noAnimation, shouldEnable, disabled: undoBtn.disabled });
+}
+
 function initToolbar() {
     document.getElementById('btn-new-game').addEventListener('click', () => {
         showNewGameModal();
@@ -67,12 +79,23 @@ function initToolbar() {
             alert("You can only undo when it is your turn!");
             return;
         }
+        if (isMoveInProgress) {
+            alert("Cannot undo while pieces are moving!");
+            return;
+        }
+        if (game.history().length === 0) {
+            alert("No moves to undo!");
+            return;
+        }
         undoMove();
         syncBoardVisuals(game.board());
         clearHighlights();
         clearSelected();
         clearHoverHighlight();
+        updateUndoButton();
     });
+
+    updateUndoButton();
 
     document.getElementById('btn-save-game').addEventListener('click', () => {
         const xml = saveGameXML();
@@ -101,6 +124,7 @@ function initToolbar() {
                 syncBoardVisuals(game.board());
                 clearHighlights();
                 clearSelected();
+                updateUndoButton();
                 // alert("Game loaded successfully!");
             } else {
                 alert("Failed to load game. Invalid XML.");
@@ -319,6 +343,7 @@ function showNewGameModal() {
         clearSelected();
         clearHoverHighlight();
         updateStatusDisplay();
+        updateUndoButton();
         // Remove listeners
         easyBtn.removeEventListener('click', easyHandler);
         moderateBtn.removeEventListener('click', moderateHandler);
@@ -426,6 +451,8 @@ async function executeMove(move) {
             // Check if User ended the game
             if (await checkGameOver()) return;
 
+            updateUndoButton();
+
             // Trigger AI move
             currentTurnText = "Computer is thinking...";
             updateStatusDisplay();
@@ -478,6 +505,7 @@ async function executeMove(move) {
                     updateStatusDisplay();
                     isMoveInProgress = false;
                     checkGameOver();
+                    updateUndoButton();
                 } else {
                     // AI has no moves? Check game over again
                     if (!await checkGameOver()) {
@@ -781,6 +809,7 @@ function clearSelected() {
 function movePieceVisual(from, to, promotionType, animate = false) {
     return new Promise((resolve) => {
         isMoveInProgress = true;
+        updateUndoButton();
         const pieceObj = pieces[from];
         const targetPos = boardSquares[to];
         const promises = [];

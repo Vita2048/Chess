@@ -29,13 +29,7 @@ export function undoMove() {
         game.undo(); // Undo Black's move
         game.undo(); // Undo White's move
         return true;
-    } else if (game.turn() === 'b') {
-        // If it's Black's turn (e.g. AI thinking), maybe just undo White's move?
-        // But user said "only when it's my turn".
-        // So we might not need this branch if input.js handles the check.
-        // However, for safety, let's just undo once if it's Black's turn (e.g. playing against self)
-        return game.undo();
-    }
+    } 
     return null;
 }
 
