@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Vite
+.vite/
+dist/
+dist-ssr/
+
+# Logs and env
+*.log
+.env*
+!.env.example
+
+# Editor / OS
+.vscode/
+.DS_Store
+Thumbs.db
