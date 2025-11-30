@@ -14,7 +14,7 @@ let moveHighlightAnimations = [];
 let currentHoveredSquare = null;
 let hoverHighlight = null;
 let hoverFlashingInterval = null;
-let currentDifficulty = 'moderate';
+let currentDifficulty = 'stockfish_3';
 let currentTurnText = 'White\'s Turn';
 let isMoveInProgress = false;
 
@@ -26,14 +26,15 @@ function updateStatusDisplay() {
         if (currentDifficulty.startsWith('stockfish_')) {
             const skill = currentDifficulty.split('_')[1];
             const labels = {
-                '5': 'Novice', '7': 'Moderate', '10': 'Club Player',
-                '15': 'Expert', '18': 'Unbeatable', '20': 'Full God-Mode'
+                '3': 'SL3 Learning 1', '4': 'SL4 Learning 2',
+                '5': 'SL5 Novice', '7': 'SL7 Moderate', '10': 'SL10 Advanced',
+                '15': 'SL15 Expert', '18': 'SL18 Unbeatable', '20': 'SL20 God-Mode'
             };
-            level = `Stockfish SL${skill} ${labels[skill] || ''}`;
+            level = labels[skill] || `SL${skill}`;
         } else {
             level = currentDifficulty.charAt(0).toUpperCase() + currentDifficulty.slice(1);
         }
-        difficultyDiv.innerText = `Difficulty: ${level}`;
+        difficultyDiv.innerText = level;
     }
 
     // Update turn status
@@ -328,9 +329,6 @@ function showNewGameModal() {
     const modal = document.getElementById('new-game-modal');
     modal.classList.remove('hidden');
 
-    const easyBtn = document.getElementById('difficulty-easy');
-    const moderateBtn = document.getElementById('difficulty-moderate');
-    const hardBtn = document.getElementById('difficulty-hard');
     const stockfishBtns = document.querySelectorAll('.stockfish-btn');
     const cancelBtn = document.getElementById('new-game-cancel');
 
@@ -345,16 +343,9 @@ function showNewGameModal() {
         updateStatusDisplay();
         updateUndoButton();
         // Remove listeners
-        easyBtn.removeEventListener('click', easyHandler);
-        moderateBtn.removeEventListener('click', moderateHandler);
-        hardBtn.removeEventListener('click', hardHandler);
         stockfishBtns.forEach(btn => btn.removeEventListener('click', stockfishHandler));
         cancelBtn.removeEventListener('click', cancelHandler);
     };
-
-    const easyHandler = () => startNewGame('easy');
-    const moderateHandler = () => startNewGame('moderate');
-    const hardHandler = () => startNewGame('hard');
 
     const stockfishHandler = (e) => {
         const level = e.target.getAttribute('data-level');
@@ -363,16 +354,10 @@ function showNewGameModal() {
 
     const cancelHandler = () => {
         modal.classList.add('hidden');
-        easyBtn.removeEventListener('click', easyHandler);
-        moderateBtn.removeEventListener('click', moderateHandler);
-        hardBtn.removeEventListener('click', hardHandler);
         stockfishBtns.forEach(btn => btn.removeEventListener('click', stockfishHandler));
         cancelBtn.removeEventListener('click', cancelHandler);
     };
 
-    easyBtn.addEventListener('click', easyHandler);
-    moderateBtn.addEventListener('click', moderateHandler);
-    hardBtn.addEventListener('click', hardHandler);
     stockfishBtns.forEach(btn => btn.addEventListener('click', stockfishHandler));
     cancelBtn.addEventListener('click', cancelHandler);
 }
