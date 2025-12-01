@@ -126,6 +126,8 @@ function initToolbar() {
                 clearHighlights();
                 clearSelected();
                 updateUndoButton();
+                // Show difficulty dialog for loaded game
+                showNewGameModal(false);
                 // alert("Game loaded successfully!");
             } else {
                 alert("Failed to load game. Invalid XML.");
@@ -325,7 +327,7 @@ function showPromotionDialog(callback) {
     buttons.forEach(btn => btn.addEventListener('click', handler));
 }
 
-function showNewGameModal() {
+export function showNewGameModal(isNewGame = true) {
     const modal = document.getElementById('new-game-modal');
     modal.classList.remove('hidden');
 
@@ -335,13 +337,15 @@ function showNewGameModal() {
     const startNewGame = (difficulty) => {
         modal.classList.add('hidden');
         currentDifficulty = difficulty;
-        resetGame();
-        syncBoardVisuals(game.board());
-        clearHighlights();
-        clearSelected();
-        clearHoverHighlight();
+        if (isNewGame) {
+            resetGame();
+            syncBoardVisuals(game.board());
+            clearHighlights();
+            clearSelected();
+            clearHoverHighlight();
+            updateUndoButton();
+        }
         updateStatusDisplay();
-        updateUndoButton();
         // Remove listeners
         stockfishBtns.forEach(btn => btn.removeEventListener('click', stockfishHandler));
         cancelBtn.removeEventListener('click', cancelHandler);

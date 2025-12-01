@@ -35,12 +35,10 @@ export function undoMove() {
 
 export function saveGameXML() {
     const fen = game.fen();
-    const pgn = game.pgn();
 
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <chessgame>
     <fen>${fen}</fen>
-    <pgn>${pgn}</pgn>
 </chessgame>`;
     return xml;
 }

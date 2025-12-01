@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { initInput, updateInput } from './input.js';
+import { initInput, updateInput, showNewGameModal } from './input.js';
 
 export let scene, camera, renderer, controls;
 let calculationMesh = null;
@@ -327,6 +327,8 @@ export function initGame() {
         initInput(camera, scene);
         initCalculationVideo();
         initBoardGlow();
+        // Show difficulty dialog on game load
+        showNewGameModal();
         animate();
 
     }, function (progress) {
