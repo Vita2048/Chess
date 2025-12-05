@@ -44,7 +44,7 @@ function updateLoadingProgress(loaded, total) {
     const progressText = document.getElementById('progress-percentage');
 
     if (progressBar && progressText && total > 0) {
-        const percentage = Math.round((loaded / total) * 100);
+        const percentage = Math.min(Math.round((loaded / total) * 100), 100);
         progressBar.style.width = percentage + '%';
         progressText.textContent = percentage + '%';
     }
