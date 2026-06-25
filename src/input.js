@@ -390,6 +390,7 @@ export function showNewGameModal(isNewGame = true) {
 
     if (!isNewGame) {
         cancelBtn.style.display = 'none';
+        closeBtn.style.display = 'none';
     }
     const tickBtns = document.querySelectorAll('.skill-tick');
     const presetBtns = document.querySelectorAll('.skill-preset');
@@ -410,6 +411,7 @@ export function showNewGameModal(isNewGame = true) {
         tickBtns.forEach(btn => btn.removeEventListener('click', onTick));
         presetBtns.forEach(btn => btn.removeEventListener('click', onPreset));
         cancelBtn.style.display = '';
+        closeBtn.style.display = '';
     };
 
     const onSliderInput = (e) => setLevel(parseInt(e.target.value, 10));
