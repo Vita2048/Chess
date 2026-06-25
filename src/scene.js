@@ -328,7 +328,7 @@ export function initGame() {
         initCalculationVideo();
         initBoardGlow();
         // Show difficulty dialog on game load
-        showNewGameModal();
+        showNewGameModal(false);
         animate();
 
     }, function (progress) {

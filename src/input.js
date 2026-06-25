@@ -387,6 +387,10 @@ export function showNewGameModal(isNewGame = true) {
     const startBtn = document.getElementById('new-game-start');
     const cancelBtn = document.getElementById('new-game-cancel');
     const closeBtn = document.getElementById('new-game-close');
+
+    if (!isNewGame) {
+        cancelBtn.style.display = 'none';
+    }
     const tickBtns = document.querySelectorAll('.skill-tick');
     const presetBtns = document.querySelectorAll('.skill-preset');
 
@@ -405,6 +409,7 @@ export function showNewGameModal(isNewGame = true) {
         closeBtn.removeEventListener('click', onCancel);
         tickBtns.forEach(btn => btn.removeEventListener('click', onTick));
         presetBtns.forEach(btn => btn.removeEventListener('click', onPreset));
+        cancelBtn.style.display = '';
     };
 
     const onSliderInput = (e) => setLevel(parseInt(e.target.value, 10));
