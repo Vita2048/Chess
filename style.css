@@ -1,9 +1,32 @@
+:root {
+  color-scheme: dark;
+  --background: oklch(0.12 0.005 270);
+  --foreground: oklch(0.97 0 0);
+  --card: oklch(0.17 0.008 270);
+  --card-foreground: oklch(0.97 0 0);
+  --primary: oklch(0.58 0.18 260);
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.22 0.008 270);
+  --secondary-foreground: oklch(0.97 0 0);
+  --muted: oklch(0.22 0.008 270);
+  --muted-foreground: oklch(0.68 0.01 270);
+  --accent: oklch(0.32 0.09 20);
+  --accent-foreground: oklch(0.97 0 0);
+  --border: oklch(1 0 0 / 8%);
+  --ring: oklch(0.58 0.18 260);
+  --radius: 0.75rem;
+}
+
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   overflow: hidden;
-  font-family: 'Inter', sans-serif;
-  background-color: #1a1a1a;
-  color: white;
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: var(--background);
+  color: var(--foreground);
 }
 
 #app {
@@ -11,655 +34,625 @@ body {
   height: 100vh;
 }
 
+/* ── Menu panel ── */
+
 #ui-overlay {
   position: absolute;
-  top: 20px;
-  left: 20px;
+  top: 16px;
+  left: 16px;
   pointer-events: none;
-  background: rgba(32, 32, 32, 0.8);
-  padding: 10px 20px;
-  border-radius: 8px;
-  backdrop-filter: blur(5px);
+  z-index: 100;
 }
 
-#difficulty-display {
-  margin-top: 10px;
-  font-size: 1rem;
-  font-weight: bold;
-  color: white;
+.menu-panel {
+  pointer-events: auto;
+  width: max-content;
+  overflow: hidden;
+  border-radius: calc(var(--radius) * 1.8);
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: 0 8px 32px rgb(0 0 0 / 0.5);
+}
+
+.menu-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.menu-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.menu-panel-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+#controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 14px 8px;
+}
+
+.menu-difficulty {
+  padding: 0 14px 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
   text-align: center;
-  background: rgba(32, 32, 32, 0.8);
-  padding: 5px 10px;
-  border-radius: 6px;
-  backdrop-filter: blur(5px);
 }
 
-#top-center-status {
+/* ── Status badge ── */
+
+.status-badge {
   position: absolute;
-  top: 20px;
+  top: 16px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 1.5rem;
-  font-weight: bold;
-  color: white;
-  background: rgba(32, 32, 32, 0.8);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--card-foreground);
+  background: var(--card);
+  border: 1px solid var(--border);
   padding: 10px 20px;
-  border-radius: 8px;
-  backdrop-filter: blur(5px);
+  border-radius: calc(var(--radius) * 1.8);
+  box-shadow: 0 8px 32px rgb(0 0 0 / 0.5);
   pointer-events: none;
-  z-index: 1000;
+  z-index: 100;
 }
 
-/* Promotion Modal */
-#promotion-modal {
+/* ── Buttons ── */
+
+.btn {
+  padding: 10px 16px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  transition: background-color 0.15s, transform 0.1s;
+}
+
+.btn-secondary {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--muted);
+}
+
+.btn-secondary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn-secondary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.08);
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+.btn-flex {
+  flex: 1;
+}
+
+.btn-flex-wide {
+  flex: 2;
+}
+
+/* ── Modal overlay ── */
+
+.modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.7);
+  inset: 0;
+  background: rgb(0 0 0 / 0.7);
   display: flex;
   justify-content: center;
   align-items: center;
   z-index: 1000;
   pointer-events: auto;
-  /* Ensure clicks work */
+  padding: 16px;
 }
 
-#promotion-modal.hidden {
+.modal-overlay.hidden {
   display: none;
 }
 
-.modal-content {
-  background: #2a2a2a;
-  padding: 2rem;
-  border-radius: 12px;
+/* ── Dialog card ── */
+
+.dialog-card {
+  width: 100%;
+  max-width: 28rem;
+  overflow: hidden;
+  border-radius: calc(var(--radius) * 1.8);
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: 0 25px 50px rgb(0 0 0 / 0.5);
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.dialog-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dialog-header-title h2 {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.dialog-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.dialog-close {
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  border: none;
+  border-radius: calc(var(--radius) * 0.6);
+  background: transparent;
+  color: oklch(0.97 0 0 / 0.7);
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.dialog-close svg {
+  width: 16px;
+  height: 16px;
+}
+
+.dialog-close:hover {
+  background: oklch(1 0 0 / 0.1);
+  color: var(--accent-foreground);
+}
+
+.dialog-body {
+  padding: 24px;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+/* ── Skill dialog ── */
+
+.skill-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.skill-readout {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.skill-level-badge {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 5rem;
+  height: 5rem;
+  border-radius: calc(var(--radius) * 1.4);
+  border: 1px solid color-mix(in oklab, var(--tier) 50%, transparent);
+  background: color-mix(in oklab, var(--tier) 14%, transparent);
   text-align: center;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.skill-level-label {
+  font-size: 0.625rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted-foreground);
+}
+
+.skill-level-value {
+  font-size: 1.875rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--tier);
+  transition: color 0.15s;
+}
+
+.skill-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.skill-info-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.skill-crown {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--tier);
+}
+
+.skill-crown.hidden {
+  display: none;
+}
+
+.skill-info-header h3 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--card-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-elo-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--tier);
+  background: color-mix(in oklab, var(--tier) 16%, transparent);
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.skill-blurb {
+  margin: 4px 0 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+/* Slider */
+
+.skill-slider-section {
+  /* container */
+}
+
+.skill-slider-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.skill-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.skill-step-btn {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.skill-step-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.skill-step-btn:hover:not(:disabled) {
+  background: var(--muted);
+}
+
+.skill-step-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.skill-slider-track-wrap {
+  position: relative;
+  flex: 1;
+}
+
+.skill-slider-track {
+  pointer-events: none;
+  position: absolute;
+  inset-inline: 0;
+  top: 50%;
+  height: 0.5rem;
+  transform: translateY(-50%);
+  overflow: hidden;
+  border-radius: 9999px;
+  background: var(--secondary);
+}
+
+.skill-slider-fill {
+  height: 100%;
+  border-radius: 9999px;
+  background: var(--tier);
+  transition: width 0.15s, background-color 0.15s;
+}
+
+.skill-slider-input {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 1.5rem;
+  cursor: pointer;
+  appearance: none;
+  background: transparent;
+}
+
+.skill-slider-input::-webkit-slider-thumb {
+  appearance: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 9999px;
+  background: var(--foreground);
+  border: 3px solid var(--tier, var(--primary));
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.5);
+  cursor: grab;
+  transition: transform 0.1s ease, border-color 0.15s;
+}
+
+.skill-slider-input:active::-webkit-slider-thumb {
+  cursor: grabbing;
+  transform: scale(1.12);
+}
+
+.skill-slider-input::-moz-range-thumb {
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 9999px;
+  background: var(--foreground);
+  border: 3px solid var(--tier, var(--primary));
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.5);
+  cursor: grab;
+}
+
+.skill-slider-input:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.skill-ticks {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding-inline: 2.25rem;
+}
+
+.skill-tick {
+  padding: 0 4px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.skill-tick:hover {
+  color: var(--card-foreground);
+}
+
+.skill-tick.active {
+  font-weight: 600;
+  color: var(--card-foreground);
+}
+
+/* Presets */
+
+.skill-presets-label {
+  margin: 0 0 8px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.skill-presets-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.skill-preset {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: oklch(0.22 0.008 270 / 0.6);
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.skill-preset:hover:not(.active) {
+  background: var(--muted);
+}
+
+.skill-preset.active {
+  border-color: color-mix(in oklab, var(--tier) 55%, transparent);
+  background: color-mix(in oklab, var(--tier) 18%, transparent);
+}
+
+.skill-preset-name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--card-foreground);
+}
+
+.skill-preset-sl {
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+
+/* ── Promotion dialog ── */
+
+.promotion-body {
+  padding: 24px;
 }
 
 .promotion-options {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.promotion-piece {
   display: flex;
-  gap: 1rem;
-  margin-top: 1rem;
-}
-
-.promotion-options button {
-  padding: 0.8rem 1.5rem;
-  font-size: 1rem;
-  cursor: pointer;
-  background: #4a4a4a;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  transition: background 0.2s;
-}
-
-.promotion-options button:hover {
-  background: #666;
-}
-
-/* New Game Modal */
-#new-game-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  justify-content: center;
+  flex-direction: column;
   align-items: center;
-  z-index: 1000;
-  pointer-events: auto;
-}
-
-#new-game-modal.hidden {
-  display: none;
-}
-
-.difficulty-buttons {
-  display: flex;
-  gap: 1rem;
-  margin-top: 1rem;
-  justify-content: center;
-}
-
-.difficulty-buttons button {
-  padding: 12px 24px;
-  font-size: 1rem;
-  font-weight: 700;
+  gap: 8px;
+  padding: 12px 8px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--secondary);
   cursor: pointer;
-
-  /* 3D Gradient & Bevel */
-  background: linear-gradient(to bottom, #5a5a5a, #3a3a3a);
-  color: #ffffff;
-
-  /* Borders for depth */
-  border: 1px solid #222;
-  border-top: 1px solid #777;
-  /* Highlight top edge */
-  border-bottom: 3px solid #111;
-  /* Thicker bottom for 3D effect */
-
-  border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-
-  /* Shadow for lift */
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.5);
-  /* Inset text */
-
-  transition: all 0.1s ease-out;
+  transition: background-color 0.15s, border-color 0.15s, transform 0.1s;
 }
 
-.difficulty-buttons button:hover {
-  background: linear-gradient(to bottom, #666, #444);
-  transform: translateY(-1px);
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-}
-
-.difficulty-buttons button:active {
-  /* Pressed state */
-  background: linear-gradient(to bottom, #333, #222);
-  transform: translateY(2px);
-  /* Move down to simulate press */
-  border-bottom: 1px solid #111;
-  /* Reduce bottom border thickness */
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-.modal-buttons {
-  display: flex;
-  gap: 1rem;
-  margin-top: 1rem;
-  justify-content: center;
-}
-
-.modal-buttons button {
-  padding: 12px 24px;
-  font-size: 1rem;
-  font-weight: 700;
-  cursor: pointer;
-
-  /* 3D Gradient & Bevel */
-  background: linear-gradient(to bottom, #5a5a5a, #3a3a3a);
-  color: #ffffff;
-
-  /* Borders for depth */
-  border: 1px solid #222;
-  border-top: 1px solid #777;
-  /* Highlight top edge */
-  border-bottom: 3px solid #111;
-  /* Thicker bottom for 3D effect */
-
-  border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-
-  /* Shadow for lift */
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.5);
-  /* Inset text */
-
-  transition: all 0.1s ease-out;
-}
-
-.modal-buttons button:hover {
-  background: linear-gradient(to bottom, #666, #444);
-  transform: translateY(-1px);
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-}
-
-.modal-buttons button:active {
-  /* Pressed state */
-  background: linear-gradient(to bottom, #333, #222);
-  transform: translateY(2px);
-  /* Move down to simulate press */
-  border-bottom: 1px solid #111;
-  /* Reduce bottom border thickness */
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-/* Game Over Overlay */
-#game-over-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.8);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1001;
+.promotion-piece img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
   pointer-events: none;
 }
 
-#game-over-overlay.hidden {
-  display: none;
+.promotion-piece span {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  pointer-events: none;
 }
 
-#game-over-message {
-  font-size: 3rem;
-  font-weight: bold;
-  color: white;
+.promotion-piece:hover {
+  background: var(--muted);
+  border-color: oklch(1 0 0 / 15%);
+  transform: translateY(-2px);
+}
+
+.promotion-piece:active {
+  transform: scale(0.97);
+}
+
+/* ── Game over ── */
+
+#game-over-overlay {
+  background: rgb(0 0 0 / 0.8);
+  pointer-events: none;
+}
+
+.game-over-message {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--foreground);
   text-align: center;
   animation: flash 1s infinite;
 }
 
 @keyframes flash {
-
-  0%,
-  50% {
-    opacity: 1;
-  }
-
-  51%,
-  100% {
-    opacity: 0;
-  }
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
 }
 
-/* Toolbar Controls */
-#controls {
-  margin-top: 10px;
-  display: flex;
-  gap: 15px;
-  pointer-events: auto;
-}
+/* ── Loading ── */
 
-#controls button {
-  padding: 12px 24px;
-  font-size: 1rem;
-  font-weight: 700;
-  cursor: pointer;
-
-  /* 3D Gradient & Bevel */
-  background: linear-gradient(to bottom, #5a5a5a, #3a3a3a);
-  color: #ffffff;
-
-  /* Borders for depth */
-  border: 1px solid #222;
-  border-top: 1px solid #777;
-  /* Highlight top edge */
-  border-bottom: 3px solid #111;
-  /* Thicker bottom for 3D effect */
-
-  border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-
-  /* Shadow for lift */
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.5);
-  /* Inset text */
-
-  transition: all 0.1s ease-out;
-}
-
-#controls button:hover {
-  background: linear-gradient(to bottom, #666, #444);
-  transform: translateY(-1px);
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-}
-
-#controls button:active {
-  /* Pressed state */
-  background: linear-gradient(to bottom, #333, #222);
-  transform: translateY(2px);
-  /* Move down to simulate press */
-  border-bottom: 1px solid #111;
-  /* Reduce bottom border thickness */
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-#controls button:disabled {
-  background: linear-gradient(to bottom, #333, #222);
-  color: #666;
-  cursor: not-allowed;
-  opacity: 0.4;
-  transform: none;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  pointer-events: none;
-}
-
-#controls button:disabled:hover {
-  background: linear-gradient(to bottom, #333, #222);
-  transform: none;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-/* Loading Overlay */
 #loading-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.8);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 2000;
+  background: rgb(0 0 0 / 0.8);
   pointer-events: none;
+  z-index: 2000;
 }
 
-#loading-overlay.hidden {
-  display: none;
-}
-
-#loading-content {
+.loading-content {
   text-align: center;
-  color: white;
+  color: var(--foreground);
 }
 
 #loading-text {
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   margin-bottom: 20px;
-  font-weight: bold;
+  font-weight: 600;
 }
 
 #progress-container {
   width: 300px;
-  height: 30px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 15px;
+  height: 8px;
+  background: var(--secondary);
+  border-radius: 9999px;
   position: relative;
   overflow: hidden;
 }
 
 #progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, #4CAF50, #45a049);
-}
-
-.difficulty-buttons button:active {
-  /* Pressed state */
-  background: linear-gradient(to bottom, #333, #222);
-  transform: translateY(2px);
-  /* Move down to simulate press */
-  border-bottom: 1px solid #111;
-  /* Reduce bottom border thickness */
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-.modal-buttons {
-  display: flex;
-  gap: 1rem;
-  margin-top: 1rem;
-  justify-content: center;
-}
-
-.modal-buttons button {
-  padding: 12px 24px;
-  font-size: 1rem;
-  font-weight: 700;
-  cursor: pointer;
-
-  /* 3D Gradient & Bevel */
-  background: linear-gradient(to bottom, #5a5a5a, #3a3a3a);
-  color: #ffffff;
-
-  /* Borders for depth */
-  border: 1px solid #222;
-  border-top: 1px solid #777;
-  /* Highlight top edge */
-  border-bottom: 3px solid #111;
-  /* Thicker bottom for 3D effect */
-
-  border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-
-  /* Shadow for lift */
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.5);
-  /* Inset text */
-
-  transition: all 0.1s ease-out;
-}
-
-.modal-buttons button:hover {
-  background: linear-gradient(to bottom, #666, #444);
-  transform: translateY(-1px);
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-}
-
-.modal-buttons button:active {
-  /* Pressed state */
-  background: linear-gradient(to bottom, #333, #222);
-  transform: translateY(2px);
-  /* Move down to simulate press */
-  border-bottom: 1px solid #111;
-  /* Reduce bottom border thickness */
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-/* Game Over Overlay */
-#game-over-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.8);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1001;
-  pointer-events: none;
-}
-
-#game-over-overlay.hidden {
-  display: none;
-}
-
-#game-over-message {
-  font-size: 3rem;
-  font-weight: bold;
-  color: white;
-  text-align: center;
-  animation: flash 1s infinite;
-}
-
-@keyframes flash {
-
-  0%,
-  50% {
-    opacity: 1;
-  }
-
-  51%,
-  100% {
-    opacity: 0;
-  }
-}
-
-/* Toolbar Controls */
-#controls {
-  margin-top: 10px;
-  display: flex;
-  gap: 15px;
-  pointer-events: auto;
-}
-
-#controls button {
-  padding: 12px 24px;
-  font-size: 1rem;
-  font-weight: 700;
-  cursor: pointer;
-
-  /* 3D Gradient & Bevel */
-  background: linear-gradient(to bottom, #5a5a5a, #3a3a3a);
-  color: #ffffff;
-
-  /* Borders for depth */
-  border: 1px solid #222;
-  border-top: 1px solid #777;
-  /* Highlight top edge */
-  border-bottom: 3px solid #111;
-  /* Thicker bottom for 3D effect */
-
-  border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-
-  /* Shadow for lift */
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.5);
-  /* Inset text */
-
-  transition: all 0.1s ease-out;
-}
-
-#controls button:hover {
-  background: linear-gradient(to bottom, #666, #444);
-  transform: translateY(-1px);
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-}
-
-#controls button:active {
-  /* Pressed state */
-  background: linear-gradient(to bottom, #333, #222);
-  transform: translateY(2px);
-  /* Move down to simulate press */
-  border-bottom: 1px solid #111;
-  /* Reduce bottom border thickness */
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-/* Loading Overlay */
-#loading-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.8);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 2000;
-  pointer-events: none;
-}
-
-#loading-overlay.hidden {
-  display: none;
-}
-
-#loading-content {
-  text-align: center;
-  color: white;
-}
-
-#loading-text {
-  font-size: 1.5rem;
-  margin-bottom: 20px;
-  font-weight: bold;
-}
-
-#progress-container {
-  width: 300px;
-  height: 30px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 15px;
-  position: relative;
-  overflow: hidden;
-}
-
-#progress-bar {
-  height: 100%;
-  background: linear-gradient(90deg, #4CAF50, #45a049);
   width: 0%;
+  background: var(--primary);
+  border-radius: 9999px;
   transition: width 0.3s ease;
-  border-radius: 15px;
 }
 
 #progress-percentage {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 1rem;
-  font-weight: bold;
-  color: white;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
-}
-
-.section-title {
-  margin: 15px 0 10px;
-  font-size: 1.1em;
-  color: #ddd;
-  text-align: left;
-  width: 100%;
-  border-bottom: 1px solid #444;
-  padding-bottom: 5px;
-}
-
-.stockfish-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  /* 2 columns */
-  gap: 10px;
-  width: 100%;
-  margin-bottom: 15px;
-}
-
-.stockfish-btn {
-  padding: 12px 24px;
-  font-size: 1rem;
-  font-weight: 700;
-  cursor: pointer;
-
-  /* 3D Gradient & Bevel */
-  background: linear-gradient(to bottom, #5a5a5a, #3a3a3a);
-  color: #ffffff;
-
-  /* Borders for depth */
-  border: 1px solid #222;
-  border-top: 1px solid #777;
-  /* Highlight top edge */
-  border-bottom: 3px solid #111;
-  /* Thicker bottom for 3D effect */
-
-  border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-
-  /* Shadow for lift */
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.5);
-  /* Inset text */
-
-  transition: all 0.1s ease-out;
-}
-
-.stockfish-btn:hover {
-  background: linear-gradient(to bottom, #666, #444);
-  transform: translateY(-1px);
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-}
-
-.stockfish-btn:active {
-  /* Pressed state */
-  background: linear-gradient(to bottom, #333, #222);
-  transform: translateY(2px);
-  /* Move down to simulate press */
-  border-bottom: 1px solid #111;
-  /* Reduce bottom border thickness */
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(0, 0, 0, 0.3);
+  margin-top: 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
 }

@@ -1,63 +1,171 @@
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>3D Chess</title>
-<link rel="icon" type="image/svg+xml" href="/ChessIcon.svg" />
-<link rel="stylesheet" href="./style.css" />
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D Chess</title>
+  <link rel="icon" type="image/svg+xml" href="/ChessIcon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./style.css" />
 </head>
 
 <body>
   <div id="app"></div>
+
   <div id="ui-overlay">
-    <div id="controls">
-      <button id="btn-new-game">New Game</button>
-      <button id="btn-save-game">Save Game</button>
-      <button id="btn-load-game">Load Game</button>
-      <button id="btn-undo" disabled>Undo</button>
-      <input type="file" id="file-input" accept=".xml" style="display: none;" />
-    </div>
-    <div id="difficulty-display">Difficulty: Moderate</div>
-  </div>
-  <div id="top-center-status">White's Turn</div>
-
-  <div id="promotion-modal" class="hidden">
-    <div class="modal-content">
-      <h3>Choose Promotion</h3>
-      <div class="promotion-options">
-        <button data-piece="q">Queen</button>
-        <button data-piece="r">Rook</button>
-        <button data-piece="b">Bishop</button>
-        <button data-piece="n">Knight</button>
+    <div class="menu-panel">
+      <header class="menu-panel-header">
+        <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14.5 17.5 3 6V3h3l11.5 11.5" /><path d="M13 19l6-6" /><path d="m16 16 6 6" /><path d="M19 21l2-2" /><path d="M9.5 6.5 21 18v3h-3L6.5 9.5" />
+        </svg>
+        <span class="menu-panel-title">3D Chess</span>
+      </header>
+      <div id="controls">
+        <button id="btn-new-game" class="btn btn-secondary">New Game</button>
+        <button id="btn-save-game" class="btn btn-secondary">Save Game</button>
+        <button id="btn-load-game" class="btn btn-secondary">Load Game</button>
+        <button id="btn-undo" class="btn btn-secondary" disabled>Undo</button>
+        <input type="file" id="file-input" accept=".xml" hidden />
       </div>
+      <div id="difficulty-display" class="menu-difficulty">SL5 · Novice</div>
     </div>
   </div>
 
-  <div id="new-game-modal" class="hidden">
-    <div class="modal-content">
-      <h3>Select Difficulty</h3>
+  <div id="top-center-status" class="status-badge">White's Turn</div>
 
-      <h4 class="section-title">Stockfish World-Class Engine</h4>
-      <div class="stockfish-grid">
-        <button class="stockfish-btn" data-level="3">SL3 Learning 1</button>
-        <button class="stockfish-btn" data-level="4">SL4 Learning 2</button>
-        <button class="stockfish-btn" data-level="5">SL5 Novice</button>
-        <button class="stockfish-btn" data-level="7">SL7 Moderate</button>
-        <button class="stockfish-btn" data-level="10">SL10 Advanced</button>
-        <button class="stockfish-btn" data-level="15">SL15 Expert</button>
-        <button class="stockfish-btn" data-level="18">SL18 Unbeatable</button>
-        <button class="stockfish-btn" data-level="20">SL20 God-Mode</button>
+  <div id="promotion-modal" class="modal-overlay hidden">
+    <section class="dialog-card promotion-dialog" role="dialog" aria-label="Choose promotion" aria-modal="true">
+      <header class="dialog-header">
+        <div class="dialog-header-title">
+          <svg class="dialog-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+          </svg>
+          <h2>Choose Promotion</h2>
+        </div>
+      </header>
+      <div class="dialog-body promotion-body">
+        <div class="promotion-options">
+          <button type="button" class="promotion-piece" data-piece="q" aria-label="Promote to Queen">
+            <img src="./queen.png" alt="Queen" />
+            <span>Queen</span>
+          </button>
+          <button type="button" class="promotion-piece" data-piece="r" aria-label="Promote to Rook">
+            <img src="./rook.png" alt="Rook" />
+            <span>Rook</span>
+          </button>
+          <button type="button" class="promotion-piece" data-piece="b" aria-label="Promote to Bishop">
+            <img src="./bishop.png" alt="Bishop" />
+            <span>Bishop</span>
+          </button>
+          <button type="button" class="promotion-piece" data-piece="n" aria-label="Promote to Knight">
+            <img src="./knight.png" alt="Knight" />
+            <span>Knight</span>
+          </button>
+        </div>
       </div>
-
-      <div class="modal-buttons">
-        <button id="new-game-cancel">Cancel</button>
-      </div>
-    </div>
+    </section>
   </div>
 
-  <div id="game-over-overlay" class="hidden">
-    <div id="game-over-message"></div>
+  <div id="new-game-modal" class="modal-overlay hidden">
+    <section class="dialog-card skill-dialog" id="skill-dialog" role="dialog" aria-label="Select difficulty" aria-modal="true">
+      <header class="dialog-header">
+        <div class="dialog-header-title">
+          <svg class="dialog-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14.5 17.5 3 6V3h3l11.5 11.5" /><path d="M13 19l6-6" /><path d="m16 16 6 6" /><path d="M19 21l2-2" /><path d="M9.5 6.5 21 18v3h-3L6.5 9.5" />
+          </svg>
+          <h2>Select Difficulty</h2>
+        </div>
+        <button type="button" id="new-game-close" class="dialog-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+          </svg>
+        </button>
+      </header>
+
+      <div class="dialog-body skill-dialog-body">
+        <div class="skill-readout">
+          <div class="skill-level-badge" id="skill-level-badge">
+            <span class="skill-level-label">Level</span>
+            <span class="skill-level-value" id="skill-level-value">5</span>
+          </div>
+          <div class="skill-info">
+            <div class="skill-info-header">
+              <svg class="skill-crown hidden" id="skill-crown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.025a1 1 0 0 1-.956.734H5.81a1 1 0 0 1-.957-.734L2.02 6.019a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z" /><path d="M5 21h14" />
+              </svg>
+              <h3 id="skill-tier-name">Novice</h3>
+              <span class="skill-elo-badge" id="skill-elo-badge">~1100 Elo</span>
+            </div>
+            <p class="skill-blurb" id="skill-blurb">Knows the basics and punishes obvious mistakes.</p>
+          </div>
+        </div>
+
+        <div class="skill-slider-section">
+          <div class="skill-slider-labels">
+            <span>Skill Level</span>
+            <span id="skill-slider-count">5 / 20</span>
+          </div>
+          <div class="skill-slider-row">
+            <button type="button" id="skill-decrease" class="skill-step-btn" aria-label="Decrease skill level">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14" /></svg>
+            </button>
+            <div class="skill-slider-track-wrap">
+              <div class="skill-slider-track">
+                <div class="skill-slider-fill" id="skill-slider-fill"></div>
+              </div>
+              <input type="range" id="skill-slider" class="skill-slider-input" min="0" max="20" step="1" value="5" aria-label="Skill level" />
+            </div>
+            <button type="button" id="skill-increase" class="skill-step-btn" aria-label="Increase skill level">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14" /><path d="M12 5v14" /></svg>
+            </button>
+          </div>
+          <div class="skill-ticks">
+            <button type="button" class="skill-tick" data-level="0">0</button>
+            <button type="button" class="skill-tick" data-level="5">5</button>
+            <button type="button" class="skill-tick" data-level="10">10</button>
+            <button type="button" class="skill-tick" data-level="15">15</button>
+            <button type="button" class="skill-tick" data-level="20">20</button>
+          </div>
+        </div>
+
+        <div class="skill-presets">
+          <p class="skill-presets-label">Quick presets</p>
+          <div class="skill-presets-grid">
+            <button type="button" class="skill-preset" data-level="3">
+              <span class="skill-preset-name">Casual</span>
+              <span class="skill-preset-sl">SL3</span>
+            </button>
+            <button type="button" class="skill-preset" data-level="8">
+              <span class="skill-preset-name">Club</span>
+              <span class="skill-preset-sl">SL8</span>
+            </button>
+            <button type="button" class="skill-preset" data-level="13">
+              <span class="skill-preset-name">Strong</span>
+              <span class="skill-preset-sl">SL13</span>
+            </button>
+            <button type="button" class="skill-preset" data-level="20">
+              <span class="skill-preset-name">Maximum</span>
+              <span class="skill-preset-sl">SL20</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="dialog-actions">
+          <button type="button" id="new-game-cancel" class="btn btn-secondary btn-flex">Cancel</button>
+          <button type="button" id="new-game-start" class="btn btn-primary btn-flex-wide">Start Game · Level 5</button>
+        </div>
+      </div>
+    </section>
   </div>
 
-  <div id="loading-overlay" class="hidden">
-    <div id="loading-content">
+  <div id="game-over-overlay" class="modal-overlay hidden">
+    <div id="game-over-message" class="game-over-message"></div>
+  </div>
+
+  <div id="loading-overlay" class="modal-overlay hidden">
+    <div id="loading-content" class="loading-content">
       <div id="loading-text">Loading 3D Model</div>
       <div id="progress-container">
         <div id="progress-bar"></div>
@@ -68,5 +176,4 @@
 
   <script type="module" crossorigin src="/src/main.js"></script>
 </body>
-
 </html>

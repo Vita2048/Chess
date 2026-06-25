@@ -14,27 +14,75 @@ let moveHighlightAnimations = [];
 let currentHoveredSquare = null;
 let hoverHighlight = null;
 let hoverFlashingInterval = null;
-let currentDifficulty = 'stockfish_3';
+let currentDifficulty = 'stockfish_5';
 let currentTurnText = 'White\'s Turn';
 let isMoveInProgress = false;
 
+const SKILL_MAX = 20;
+
+const SKILL_TIERS = [
+    { name: 'Beginner', blurb: 'Makes frequent blunders. Perfect for your first games.', range: [0, 2], color: 'oklch(0.72 0.16 150)' },
+    { name: 'Learning', blurb: 'Plays simple, predictable moves while you find your footing.', range: [3, 4], color: 'oklch(0.74 0.15 175)' },
+    { name: 'Novice', blurb: 'Knows the basics and punishes obvious mistakes.', range: [5, 6], color: 'oklch(0.68 0.16 230)' },
+    { name: 'Intermediate', blurb: 'Plays solid positional chess with real tactics.', range: [7, 9], color: 'oklch(0.66 0.17 255)' },
+    { name: 'Advanced', blurb: 'Calculates deeply and rarely lets advantages slip.', range: [10, 12], color: 'oklch(0.78 0.15 85)' },
+    { name: 'Expert', blurb: 'Sharp, aggressive, and unforgiving of inaccuracies.', range: [13, 15], color: 'oklch(0.72 0.18 55)' },
+    { name: 'Master', blurb: 'Near-flawless play. Expect to be outmaneuvered.', range: [16, 18], color: 'oklch(0.66 0.2 30)' },
+    { name: 'God-Mode', blurb: 'Maximum strength. Survival itself is a victory.', range: [19, 20], color: 'oklch(0.62 0.23 22)' },
+];
+
+function tierForLevel(level) {
+    return SKILL_TIERS.find((t) => level >= t.range[0] && level <= t.range[1]) ?? SKILL_TIERS[0];
+}
+
+function estimatedElo(level) {
+    const raw = 800 + (level / SKILL_MAX) * 2400;
+    return Math.round(raw / 25) * 25;
+}
+
+function getCurrentSkillLevel() {
+    if (currentDifficulty.startsWith('stockfish_')) {
+        return parseInt(currentDifficulty.split('_')[1], 10);
+    }
+    return 5;
+}
+
+function updateSkillDialogUI(level) {
+    const tier = tierForLevel(level);
+    const dialog = document.getElementById('skill-dialog');
+    if (dialog) dialog.style.setProperty('--tier', tier.color);
+
+    const pct = (level / SKILL_MAX) * 100;
+    document.getElementById('skill-level-value').textContent = level;
+    document.getElementById('skill-tier-name').textContent = tier.name;
+    document.getElementById('skill-blurb').textContent = tier.blurb;
+    document.getElementById('skill-elo-badge').textContent = `~${estimatedElo(level)} Elo`;
+    document.getElementById('skill-slider-count').textContent = `${level} / ${SKILL_MAX}`;
+    document.getElementById('skill-slider-fill').style.width = `${pct}%`;
+    document.getElementById('skill-slider').value = level;
+    document.getElementById('new-game-start').textContent = `Start Game · Level ${level}`;
+
+    const crown = document.getElementById('skill-crown');
+    crown.classList.toggle('hidden', level < 19);
+
+    document.getElementById('skill-decrease').disabled = level === 0;
+    document.getElementById('skill-increase').disabled = level === SKILL_MAX;
+
+    document.querySelectorAll('.skill-tick').forEach((tick) => {
+        tick.classList.toggle('active', parseInt(tick.dataset.level, 10) === level);
+    });
+
+    document.querySelectorAll('.skill-preset').forEach((preset) => {
+        preset.classList.toggle('active', parseInt(preset.dataset.level, 10) === level);
+    });
+}
+
 function updateStatusDisplay() {
-    // Update difficulty display
     const difficultyDiv = document.getElementById('difficulty-display');
     if (difficultyDiv) {
-        let level = currentDifficulty;
-        if (currentDifficulty.startsWith('stockfish_')) {
-            const skill = currentDifficulty.split('_')[1];
-            const labels = {
-                '3': 'SL3 Learning 1', '4': 'SL4 Learning 2',
-                '5': 'SL5 Novice', '7': 'SL7 Moderate', '10': 'SL10 Advanced',
-                '15': 'SL15 Expert', '18': 'SL18 Unbeatable', '20': 'SL20 God-Mode'
-            };
-            level = labels[skill] || `SL${skill}`;
-        } else {
-            level = currentDifficulty.charAt(0).toUpperCase() + currentDifficulty.slice(1);
-        }
-        difficultyDiv.innerText = level;
+        const level = getCurrentSkillLevel();
+        const tier = tierForLevel(level);
+        difficultyDiv.textContent = `SL${level} · ${tier.name}`;
     }
 
     // Update turn status
@@ -313,12 +361,11 @@ function showPromotionDialog(callback) {
     const modal = document.getElementById('promotion-modal');
     modal.classList.remove('hidden');
 
-    const buttons = modal.querySelectorAll('button');
+    const buttons = modal.querySelectorAll('.promotion-piece');
     const handler = (event) => {
-        const piece = event.target.getAttribute('data-piece');
+        const piece = event.currentTarget.getAttribute('data-piece');
         if (piece) {
             modal.classList.add('hidden');
-            // Remove listeners to prevent duplicates
             buttons.forEach(btn => btn.removeEventListener('click', handler));
             callback(piece);
         }
@@ -331,12 +378,44 @@ export function showNewGameModal(isNewGame = true) {
     const modal = document.getElementById('new-game-modal');
     modal.classList.remove('hidden');
 
-    const stockfishBtns = document.querySelectorAll('.stockfish-btn');
-    const cancelBtn = document.getElementById('new-game-cancel');
+    let level = getCurrentSkillLevel();
+    updateSkillDialogUI(level);
 
-    const startNewGame = (difficulty) => {
+    const slider = document.getElementById('skill-slider');
+    const decreaseBtn = document.getElementById('skill-decrease');
+    const increaseBtn = document.getElementById('skill-increase');
+    const startBtn = document.getElementById('new-game-start');
+    const cancelBtn = document.getElementById('new-game-cancel');
+    const closeBtn = document.getElementById('new-game-close');
+    const tickBtns = document.querySelectorAll('.skill-tick');
+    const presetBtns = document.querySelectorAll('.skill-preset');
+
+    const clamp = (n) => Math.min(SKILL_MAX, Math.max(0, n));
+    const setLevel = (n) => {
+        level = clamp(n);
+        updateSkillDialogUI(level);
+    };
+
+    const cleanup = () => {
+        slider.removeEventListener('input', onSliderInput);
+        decreaseBtn.removeEventListener('click', onDecrease);
+        increaseBtn.removeEventListener('click', onIncrease);
+        startBtn.removeEventListener('click', onStart);
+        cancelBtn.removeEventListener('click', onCancel);
+        closeBtn.removeEventListener('click', onCancel);
+        tickBtns.forEach(btn => btn.removeEventListener('click', onTick));
+        presetBtns.forEach(btn => btn.removeEventListener('click', onPreset));
+    };
+
+    const onSliderInput = (e) => setLevel(parseInt(e.target.value, 10));
+    const onDecrease = () => setLevel(level - 1);
+    const onIncrease = () => setLevel(level + 1);
+    const onTick = (e) => setLevel(parseInt(e.currentTarget.dataset.level, 10));
+    const onPreset = (e) => setLevel(parseInt(e.currentTarget.dataset.level, 10));
+
+    const onStart = () => {
         modal.classList.add('hidden');
-        currentDifficulty = difficulty;
+        currentDifficulty = `stockfish_${level}`;
         if (isNewGame) {
             resetGame();
             syncBoardVisuals(game.board());
@@ -346,24 +425,22 @@ export function showNewGameModal(isNewGame = true) {
             updateUndoButton();
         }
         updateStatusDisplay();
-        // Remove listeners
-        stockfishBtns.forEach(btn => btn.removeEventListener('click', stockfishHandler));
-        cancelBtn.removeEventListener('click', cancelHandler);
+        cleanup();
     };
 
-    const stockfishHandler = (e) => {
-        const level = e.target.getAttribute('data-level');
-        startNewGame(`stockfish_${level}`);
-    };
-
-    const cancelHandler = () => {
+    const onCancel = () => {
         modal.classList.add('hidden');
-        stockfishBtns.forEach(btn => btn.removeEventListener('click', stockfishHandler));
-        cancelBtn.removeEventListener('click', cancelHandler);
+        cleanup();
     };
 
-    stockfishBtns.forEach(btn => btn.addEventListener('click', stockfishHandler));
-    cancelBtn.addEventListener('click', cancelHandler);
+    slider.addEventListener('input', onSliderInput);
+    decreaseBtn.addEventListener('click', onDecrease);
+    increaseBtn.addEventListener('click', onIncrease);
+    startBtn.addEventListener('click', onStart);
+    cancelBtn.addEventListener('click', onCancel);
+    closeBtn.addEventListener('click', onCancel);
+    tickBtns.forEach(btn => btn.addEventListener('click', onTick));
+    presetBtns.forEach(btn => btn.addEventListener('click', onPreset));
 }
 
 function showGameOverOverlay(message) {
@@ -876,7 +953,7 @@ function movePieceVisual(from, to, promotionType, animate = false) {
 
 function animatePieceMove(pieceObj, targetPos, callback) {
     const startPos = pieceObj.position.clone();
-    const duration = 1625; // 1.625 seconds animation (30% slower)
+    const duration = 1225; // 1.625 seconds animation (30% slower)
     const startTime = Date.now();
 
     // === ENHANCED MULTI-LAYER GLOW SYSTEM ===
