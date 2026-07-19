@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { pieces, boardSquares, stepRank, stepFile, boardY, pieceYOffset, boardMesh, pieceTemplates, BOARD_SCALE, BOARD_ROTATION_Y, rankDir, fileDir, syncBoardVisuals, showCalculationVideo, hideCalculationVideo } from './scene.js';
+import { pieces, boardSquares, stepRank, stepFile, boardY, pieceYOffset, pieceTemplates, BOARD_SCALE, BOARD_ROTATION_Y, rankDir, fileDir, syncBoardVisuals, showCalculationVideo, hideCalculationVideo, controls, renderer } from './scene.js';
 import { getMoves, makeMove, game, resetGame, undoMove, saveGameXML, loadGameXML } from './chessLogic.js';
 
 let raycaster;
@@ -102,8 +102,18 @@ export function initInput(cam, sc) {
     window.addEventListener('click', onMouseClick, false);
     window.addEventListener('mousemove', onMouseMove, false);
 
+    // Capture pointerdown before OrbitControls so rotation can be blocked
+    // when the press starts on top of the board.
+    if (renderer && renderer.domElement) {
+        renderer.domElement.addEventListener('pointerdown', onPointerDownCapture, true);
+    }
+
     initToolbar();
     updateStatusDisplay();
+}
+
+function onPointerDownCapture(event) {
+    updateRotateAllowed(event.clientX, event.clientY);
 }
 
 function updateUndoButton() {
@@ -202,6 +212,26 @@ function onMouseClick(event) {
     }
 }
 
+let _boardBounds = null;
+function getBoardBounds() {
+    if (_boardBounds) return _boardBounds;
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const pos of Object.values(boardSquares)) {
+        if (pos.x < minX) minX = pos.x;
+        if (pos.x > maxX) maxX = pos.x;
+        if (pos.z < minZ) minZ = pos.z;
+        if (pos.z > maxZ) maxZ = pos.z;
+    }
+    const pad = (stepRank + stepFile) / 2;
+    _boardBounds = { minX: minX - pad, maxX: maxX + pad, minZ: minZ - pad, maxZ: maxZ + pad };
+    return _boardBounds;
+}
+
+function isPointerOverBoard(point) {
+    const b = getBoardBounds();
+    return point.x >= b.minX && point.x <= b.maxX && point.z >= b.minZ && point.z <= b.maxZ;
+}
+
 function onMouseMove(event) {
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -211,11 +241,26 @@ function onMouseMove(event) {
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -boardY);
     const intersection = new THREE.Vector3();
 
+    // Only allow left-mouse orbit rotation/tilt when the pointer is outside the board area.
+    updateRotateAllowed(event.clientX, event.clientY);
+
     if (raycaster.ray.intersectPlane(plane, intersection)) {
         handleCellHover(intersection);
     } else {
         clearHoverHighlight();
     }
+}
+
+function updateRotateAllowed(clientX, clientY) {
+    if (!controls) return;
+    mouse.x = (clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -boardY);
+    const intersection = new THREE.Vector3();
+    const overBoard = raycaster.ray.intersectPlane(plane, intersection) && isPointerOverBoard(intersection);
+    controls.enableRotate = !overBoard;
 }
 
 function handleCellHover(point) {
