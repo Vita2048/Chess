@@ -10,10 +10,10 @@ let selectedSquare = null;
 let highlightedSquares = [];
 let selectedHighlight = null;
 let selectedPieceGlow = null;
-let moveHighlightAnimations = [];
 let currentHoveredSquare = null;
 let hoverHighlight = null;
-let hoverFlashingInterval = null;
+// Active highlight meshes whose shaders need a time uniform each frame.
+const activeHighlightMeshes = new Set();
 let currentDifficulty = 'stockfish_5';
 let currentTurnText = 'White\'s Turn';
 let isMoveInProgress = false;
@@ -292,50 +292,18 @@ function updateHoverHighlight(square) {
 
     if (isMoveInProgress || game.turn() !== 'w') return;
 
+    // Match Godot: only white pieces get a hover frame; never stack on the selected square.
     const piece = game.get(square);
     if (!piece || piece.color !== 'w') return;
+    if (selectedSquare && selectedSquare === square) return;
 
-    let flashing = true;
-    if (selectedSquare && selectedSquare === square) {
-        return;
-    }
-
-    showHoverHighlight(square, flashing);
-}
-
-function showHoverHighlight(square, flashing) {
-    clearHoverHighlight();
-
-    const pos = boardSquares[square];
-    const avgStep = (stepRank + stepFile) / 2;
-    const size = avgStep * 1.22;
-
-    const geometry = new THREE.PlaneGeometry(size, size);
-    const mesh = new THREE.Mesh(geometry, highlightMaterial.clone());
-
-    mesh.position.copy(pos);
-    mesh.position.y = boardY + 0.01;
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(BOARD_ROTATION_Y));
-
-    scene.add(mesh);
-    hoverHighlight = mesh;
-
-    if (flashing) {
-        hoverFlashingInterval = setInterval(() => {
-            mesh.visible = !mesh.visible;
-        }, 250);
-    }
+    hoverHighlight = createHighlight(square, { animated: true, isHover: true });
 }
 
 function clearHoverHighlight() {
     if (hoverHighlight) {
-        scene.remove(hoverHighlight);
+        disposeHighlightMesh(hoverHighlight);
         hoverHighlight = null;
-    }
-    if (hoverFlashingInterval) {
-        clearInterval(hoverFlashingInterval);
-        hoverFlashingInterval = null;
     }
     currentHoveredSquare = null;
 }
@@ -523,8 +491,12 @@ async function executeMove(move) {
         }
         console.log("Board after move:", game.board());
         if (result) {
-            // Clear selection glow before animating (restore original materials first)
+            // Clear selection + legal-move frames before animating so the
+            // moving piece's blue glow does not reveal leftover move squares.
+            selectedSquare = null;
+            clearHighlights();
             clearSelected();
+            clearHoverHighlight();
 
             // Wait for move and capture animations to complete
             await movePieceVisual(move.from, move.to, move.promotion, true);
@@ -561,10 +533,6 @@ async function executeMove(move) {
 
             await removeCapturedPieces();
             console.log("Pieces after removeCapturedPieces:", Object.keys(pieces));
-
-            selectedSquare = null;
-            clearHighlights();
-            clearSelected();
 
             // Check if User ended the game
             if (await checkGameOver()) return;
@@ -720,198 +688,185 @@ function handleBoardClick(point) {
         handleSquareClick(closestSquare);
     }
 }
+// --- Square highlights (ported from ChessGodot highlight.gdshader) ---
+// mode: 0 = hover, 1 = allowed move, 2 = selected
+const HIGHLIGHT_VERT = /* glsl */ `
+varying vec2 vUv;
+void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+const HIGHLIGHT_FRAG = /* glsl */ `
+uniform float timeValue;
+uniform float animSpeed;
+uniform int mode;
+uniform vec3 cyanRim;
+uniform vec3 midBlue;
+uniform vec3 innerBlue;
+uniform float brightness;
+
+varying vec2 vUv;
+
+void main() {
+    // Center-based UV (0.0 at center, 0.5 at tile borders)
+    vec2 center = abs(vUv - vec2(0.5));
+    float boxDist = max(center.x, center.y);
+
+    // Clip strictly to the tile boundary
+    if (boxDist > 0.495) discard;
+
+    float t = timeValue * animSpeed;
+    float pulse = 0.88 + 0.12 * sin(t * 3.5);
+
+    // Hollow frame: fully transparent center, opacity only along the border.
+    float frameAlpha = smoothstep(0.24, 0.38, boxDist) * 0.95;
+
+    // Deep navy (inner) -> electric blue (mid) -> neon cyan (outer rim)
+    float midGrad  = smoothstep(0.28, 0.42, boxDist);
+    float outerRim = smoothstep(0.43, 0.485, boxDist);
+
+    vec3 col = mix(innerBlue, midBlue, midGrad);
+    col = mix(col, cyanRim, outerRim);
+
+    if (mode == 1) {
+        // Allowed move: light wave traveling along the frame bevel
+        float wave = sin((boxDist * 25.0) - (t * 5.0)) * 0.5 + 0.5;
+        col += cyanRim * wave * 0.35 * midGrad;
+        col *= pulse;
+    } else if (mode == 2) {
+        // Selected: bright pulsing frame
+        col *= pulse * 1.3;
+        frameAlpha = clamp(frameAlpha * 1.1 * pulse, 0.0, 1.0);
+    } else {
+        // Hover: slightly quieter frame
+        frameAlpha *= 0.85;
+    }
+
+    gl_FragColor = vec4(col * brightness, frameAlpha);
+}
+`;
+
 function alignHighlightToBoard(mesh) {
-    // Use the calibrated board vectors from scene.js
-    // This ensures alignment is stable even if pieces move
+    // Match Godot: plane on board with X along files, normal up.
+    // Three.js PlaneGeometry lies in XY with normal +Z, so map Z -> up.
+    let side = fileDir && fileDir.lengthSq() > 0.0001
+        ? fileDir.clone().normalize()
+        : new THREE.Vector3(1, 0, 0);
+    const up = new THREE.Vector3(0, 1, 0);
+    let forward = new THREE.Vector3().crossVectors(up, side).normalize();
+    if (forward.lengthSq() < 0.0001) {
+        forward.set(0, 0, 1);
+    }
+    side = new THREE.Vector3().crossVectors(forward, up).normalize();
 
-    // 1. Target axes
-    // Local X aligns with Rank direction
-    // Local Z aligns with File direction
-    const targetX = rankDir.clone();
-    const targetZ = fileDir.clone();
-
-    // 2. Calculate the normal (Up vector)
-    // Z cross X = Y (Right-handed coordinate system)
-    const targetY = new THREE.Vector3().crossVectors(targetZ, targetX).normalize();
-
-    // 3. Re-orthogonalize to ensure a perfect rotation matrix
-    const correctedZ = new THREE.Vector3().crossVectors(targetX, targetY).normalize();
-
-    // 4. Create rotation matrix
-    const rotationMatrix = new THREE.Matrix4();
-    rotationMatrix.makeBasis(targetX, targetY, correctedZ);
-
-    // 5. Apply rotation
+    const rotationMatrix = new THREE.Matrix4().makeBasis(side, forward, up);
     mesh.setRotationFromMatrix(rotationMatrix);
 }
-const highlightUniforms = {
-    time: { value: 0 }
-};
 
-const highlightMaterial = new THREE.ShaderMaterial({
-    uniforms: {
-        time: { value: 0 }
-    },
-    transparent: true,
-    side: THREE.DoubleSide,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    vertexShader: `
-        varying vec2 vUv;
-        void main() {
-            vUv = uv;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-    `,
-    fragmentShader: `
-        uniform float time;
-        varying vec2 vUv;
+function createHighlightMaterial(mode, animated) {
+    const doAnim = animated || mode === 1;
+    return new THREE.ShaderMaterial({
+        uniforms: {
+            timeValue: { value: 0 },
+            animSpeed: { value: doAnim ? 1.0 : 0.0 },
+            mode: { value: mode },
+            cyanRim: { value: new THREE.Color(0.0, 0.85, 1.0) },
+            midBlue: { value: new THREE.Color(0.0, 0.40, 0.90) },
+            innerBlue: { value: new THREE.Color(0.02, 0.10, 0.45) },
+            brightness: { value: 1.1 },
+        },
+        transparent: true,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        // Normal alpha blend (Godot blend_mix) — hollow frame, not additive wash.
+        blending: THREE.NormalBlending,
+        vertexShader: HIGHLIGHT_VERT,
+        fragmentShader: HIGHLIGHT_FRAG,
+    });
+}
 
-        void main() {
-            vec2 uv = vUv;
-            vec2 center = abs(uv - 0.5);
-            float box = max(center.x, center.y); // Chebyshev = perfect square
+/**
+ * @param {string} square
+ * @param {{ animated?: boolean, isHover?: boolean, isMove?: boolean }} opts
+ */
+function createHighlight(square, opts = {}) {
+    const { animated = true, isHover = false, isMove = false } = opts;
+    const pos = boardSquares[square];
+    if (!pos) return null;
 
-            // VERY THICK glowing border (2.5x previous)
-            float inner = 0.32;
-            float outer = 0.50;
+    // 0 = hover, 1 = allowed move, 2 = selected
+    let mode = 2;
+    if (isHover) mode = 0;
+    else if (isMove) mode = 1;
 
-            float border = 1.0 - smoothstep(inner, inner + 0.05, box);      // Sharp inner edge
-            border += smoothstep(outer - 0.12, outer, box);                 // Wide soft outer glow
+    const avgStep = (stepRank + stepFile) / 2;
+    // Slight oversize so the blue rim sits cleanly on the square edge (Godot: 1.04).
+    const size = avgStep * 1.04;
 
-            // Animated flashing energy waves flowing around the edge
-            float wave = sin((box - 0.3) * 25.0 - time * 12.0) * 0.5 + 0.5;
-            float flash = pow(wave, 4.0) * (0.6 + 0.4 * sin(time * 8.0));
+    const geometry = new THREE.PlaneGeometry(size, size);
+    const material = createHighlightMaterial(mode, animated);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
+    mesh.renderOrder = 2;
 
-            // Dark, intense blue (no more washed-out cyan)
-            vec3 darkBlue   = vec3(0.00, 0.02, 0.18);
-            vec3 midBlue    = vec3(0.00, 0.10, 0.45);
-            vec3 brightBlue = vec3(0.10, 0.35, 0.95);
-            vec3 whiteFlash = vec3(0.70, 0.90, 1.00);
+    mesh.position.copy(pos);
+    // Sit clearly above the board surface to avoid z-fight.
+    const surfaceY = boardY !== undefined ? boardY : pos.y;
+    mesh.position.y = surfaceY + 0.004;
 
-            vec3 color = mix(darkBlue, midBlue, border);
-            color = mix(color, brightBlue, border * 1.2);
-            color = mix(color, whiteFlash, flash * border);
+    alignHighlightToBoard(mesh);
 
-            // Strong pulsing intensity
-            float pulse = 0.7 + 0.3 * sin(time * 10.0);
-            float intensity = (border * 1.8 + flash * 2.5) * pulse;
+    scene.add(mesh);
+    activeHighlightMeshes.add(mesh);
+    return mesh;
+}
 
-            // EXTREMELY HIGH alpha → no transparency problems
-            float alpha = intensity * 28.0;
-
-            // Clean cutoff
-            if (box > 0.52) discard;
-
-            gl_FragColor = vec4(color, alpha);
-        }
-    `
-});
+function disposeHighlightMesh(mesh) {
+    if (!mesh) return;
+    activeHighlightMeshes.delete(mesh);
+    if (mesh.parent) mesh.parent.remove(mesh);
+    else scene.remove(mesh);
+    if (mesh.geometry) mesh.geometry.dispose();
+    if (mesh.material) mesh.material.dispose();
+}
 
 export function updateInput(time) {
-    highlightMaterial.uniforms.time.value = time;
+    for (const mesh of activeHighlightMeshes) {
+        const mat = mesh.material;
+        if (!mat || !mat.uniforms || !mat.uniforms.timeValue) continue;
+        const aspeed = mat.uniforms.animSpeed ? mat.uniforms.animSpeed.value : 1.0;
+        if (aspeed > 0.0) {
+            mat.uniforms.timeValue.value = time;
+        }
+    }
 }
 
 function highlightMoves(square) {
     clearHighlights();
     const moves = getMoves(square);
-    moves.forEach(move => {
-        const targetSquare = move.to;
-        const pos = boardSquares[targetSquare];
-        if (!pos) return;
-
-        const avgStep = (stepRank + stepFile) / 2;
-        const size = avgStep * 1.22;  // Much larger to show full thick glow
-
-        const geometry = new THREE.PlaneGeometry(size, size);
-        const mesh = new THREE.Mesh(geometry, highlightMaterial);
-
-        mesh.position.copy(pos);
-        const surfaceY = boardY !== undefined ? boardY : pos.y;
-        mesh.position.y = surfaceY + 0.01;  // Higher to avoid z-fighting
-
-        mesh.rotation.x = -Math.PI / 2;
-        mesh.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(BOARD_ROTATION_Y));
-
-        scene.add(mesh);
-        highlightedSquares.push(mesh);
+    moves.forEach((move) => {
+        const mesh = createHighlight(move.to, { animated: true, isMove: true });
+        if (mesh) highlightedSquares.push(mesh);
     });
 }
 
 function highlightSelected(square) {
     clearSelected();
-    const pos = boardSquares[square];
-    const avgStep = (stepRank + stepFile) / 2;
-    const size = avgStep * 1.22;
-
-    const geometry = new THREE.PlaneGeometry(size, size);
-    const material = new THREE.ShaderMaterial({
-        uniforms: {
-            time: { value: 0 }
-        },
-        transparent: true,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        vertexShader: `
-            varying vec2 vUv;
-            void main() {
-                vUv = uv;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `,
-        fragmentShader: `
-            uniform float time;
-            varying vec2 vUv;
-
-            void main() {
-                vec2 uv = vUv;
-                vec2 center = abs(uv - 0.5);
-                float box = max(center.x, center.y);
-
-                float inner = 0.32;
-                float outer = 0.50;
-
-                float border = 1.0 - smoothstep(inner, inner + 0.05, box);
-                border += smoothstep(outer - 0.12, outer, box);
-
-                vec3 darkBlue   = vec3(0.00, 0.02, 0.18);
-                vec3 midBlue    = vec3(0.00, 0.10, 0.45);
-                vec3 brightBlue = vec3(0.10, 0.35, 0.95);
-
-                vec3 color = mix(darkBlue, midBlue, border);
-                color = mix(color, brightBlue, border * 1.2);
-
-                float intensity = border * 1.8;
-
-                float alpha = intensity * 28.0;
-
-                if (box > 0.52) discard;
-
-                gl_FragColor = vec4(color, alpha);
-            }
-        `
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-
-    mesh.position.copy(pos);
-    mesh.position.y = boardY + 0.01;
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(BOARD_ROTATION_Y));
-
-    scene.add(mesh);
-    selectedHighlight = mesh;
+    // Selected frame is bright but non-animated (Godot: animated=false).
+    selectedHighlight = createHighlight(square, { animated: false, isHover: false, isMove: false });
 }
+
 function clearHighlights() {
-    highlightedSquares.forEach(mesh => scene.remove(mesh));
+    highlightedSquares.forEach((mesh) => disposeHighlightMesh(mesh));
     highlightedSquares = [];
 }
 
-
-
 function clearSelected() {
     if (selectedHighlight) {
-        scene.remove(selectedHighlight);
+        disposeHighlightMesh(selectedHighlight);
         selectedHighlight = null;
     }
 
@@ -1231,29 +1186,432 @@ function finalizeMove(pieceObj, to, from, promotionType, finalPosition) {
     }
 }
 
+// --- Capture crack / fragment effect (ported from ChessGodot) ---
+const CAPTURE_DURATION = 1180;
+const CAPTURE_FRAGMENT_COUNT = 7;
+const CAPTURE_MAT_POOL_CAP = 32;
+
+const captureCrackMatPool = [];
+const captureFragmentMatPool = [];
+
+const CAPTURE_CRACK_VERT = /* glsl */ `
+varying vec3 vWorldPosition;
+varying vec3 vNormalW;
+
+void main() {
+    vec4 worldPos = modelMatrix * vec4(position, 1.0);
+    vWorldPosition = worldPos.xyz;
+    vNormalW = normalize(mat3(modelMatrix) * normal);
+    gl_Position = projectionMatrix * viewMatrix * worldPos;
+}
+`;
+
+const CAPTURE_CRACK_FRAG = /* glsl */ `
+uniform vec3 baseColor;
+uniform vec3 crackColor;
+uniform float fractureProgress;
+uniform float seed;
+
+varying vec3 vWorldPosition;
+varying vec3 vNormalW;
+
+float hash21(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+
+// Voronoi-edge pattern: lower values lie closer to a cell boundary (the seam).
+float fractureLines(vec3 p) {
+    vec2 q = p.xz * 7.5 + p.y * vec2(3.7, -2.9) + seed;
+    vec2 cell = floor(q);
+    vec2 local = fract(q);
+    float nearest = 8.0;
+    float second = 8.0;
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            vec2 offset = vec2(float(x), float(y));
+            vec2 feature = offset + vec2(hash21(cell + offset), hash21(cell + offset + 19.7));
+            float d = length(feature - local);
+            if (d < nearest) {
+                second = nearest;
+                nearest = d;
+            } else if (d < second) {
+                second = d;
+            }
+        }
+    }
+    return second - nearest;
+}
+
+void main() {
+    float edge = fractureLines(vWorldPosition);
+    float reveal = smoothstep(0.07, 0.40, fractureProgress);
+    float holeHalf = mix(0.0, 0.078, reveal);
+    float rimOuter = holeHalf + mix(0.055, 0.095, reveal);
+
+    // See-through core so the board shows through the seams.
+    if (edge < holeHalf) discard;
+
+    float rim = 1.0 - smoothstep(holeHalf, rimOuter, edge);
+    float preCrack = 1.0 - smoothstep(0.045, 0.165, edge);
+    float preStrength = preCrack * reveal * (1.0 - rim);
+
+    vec3 albedo = mix(baseColor, crackColor, rim * 0.92 + preStrength * 0.55);
+    float roughness = mix(0.42, 0.88, max(rim, preStrength));
+    vec3 emission = crackColor * rim * 0.14;
+
+    // Simple directional shade so pieces stay readable without full PBR.
+    vec3 N = normalize(vNormalW);
+    float ndl = max(dot(N, normalize(vec3(0.35, 1.0, 0.45))), 0.0);
+    float amb = 0.55 + 0.45 * ndl;
+    // Roughness slightly flattens the highlight response.
+    amb = mix(amb, 0.72, roughness * 0.35);
+
+    gl_FragColor = vec4(albedo * amb + emission, 1.0);
+}
+`;
+
+const CAPTURE_FRAGMENT_VERT = /* glsl */ `
+varying vec3 vLocalPosition;
+varying vec3 vNormalW;
+
+void main() {
+    vLocalPosition = position;
+    vNormalW = normalize(mat3(modelMatrix) * normal);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+const CAPTURE_FRAGMENT_FRAG = /* glsl */ `
+uniform vec3 baseColor;
+uniform vec3 localMin;
+uniform vec3 localSize;
+uniform int fragmentIndex;
+uniform int fragmentCount;
+uniform float seed;
+
+varying vec3 vLocalPosition;
+varying vec3 vNormalW;
+
+float hash31(vec3 p) {
+    p = fract(p * 0.1031);
+    p += dot(p, p.yzx + 33.33);
+    return fract((p.x + p.y) * p.z);
+}
+
+void main() {
+    vec3 size = max(localSize, vec3(0.0001));
+    vec3 normalizedPosition = (vLocalPosition - localMin) / size;
+    vec3 cell = floor(normalizedPosition * 6.0);
+    int assigned = int(floor(hash31(cell + seed) * float(fragmentCount)));
+    if (assigned != fragmentIndex) discard;
+
+    vec3 N = normalize(vNormalW);
+    float ndl = max(dot(N, normalize(vec3(0.35, 1.0, 0.45))), 0.0);
+    float amb = 0.58 + 0.42 * ndl;
+    gl_FragColor = vec4(baseColor * amb, 1.0);
+}
+`;
+
+function easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+function easeInQuad(t) {
+    return t * t;
+}
+
+function getMaterialBaseColor(material) {
+    if (!material) return new THREE.Color(0.55, 0.55, 0.55);
+    const mat = Array.isArray(material) ? material[0] : material;
+    if (mat && mat.color && mat.color.isColor) {
+        return mat.color.clone();
+    }
+    return new THREE.Color(0.55, 0.55, 0.55);
+}
+
+function colorLuminance(c) {
+    return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+}
+
+function acquireCaptureMaterial(pool, kind) {
+    while (pool.length > 0) {
+        const mat = pool.pop();
+        if (mat) return mat;
+    }
+    if (kind === 'crack') {
+        return new THREE.ShaderMaterial({
+            uniforms: {
+                baseColor: { value: new THREE.Color(0.8, 0.8, 0.8) },
+                crackColor: { value: new THREE.Color(0.018, 0.013, 0.011) },
+                fractureProgress: { value: 0 },
+                seed: { value: 0 },
+            },
+            vertexShader: CAPTURE_CRACK_VERT,
+            fragmentShader: CAPTURE_CRACK_FRAG,
+            side: THREE.FrontSide,
+        });
+    }
+    return new THREE.ShaderMaterial({
+        uniforms: {
+            baseColor: { value: new THREE.Color(0.8, 0.8, 0.8) },
+            localMin: { value: new THREE.Vector3(-0.5, -0.5, -0.5) },
+            localSize: { value: new THREE.Vector3(1, 1, 1) },
+            fragmentIndex: { value: 0 },
+            fragmentCount: { value: CAPTURE_FRAGMENT_COUNT },
+            seed: { value: 0 },
+        },
+        vertexShader: CAPTURE_FRAGMENT_VERT,
+        fragmentShader: CAPTURE_FRAGMENT_FRAG,
+        side: THREE.FrontSide,
+    });
+}
+
+function releaseCaptureMaterial(pool, mat) {
+    if (!mat) return;
+    if (pool.length < CAPTURE_MAT_POOL_CAP) {
+        pool.push(mat);
+    } else {
+        mat.dispose();
+    }
+}
+
+function applyCaptureCrackMaterials(pieceObj) {
+    const states = [];
+    const worldPos = new THREE.Vector3();
+    pieceObj.getWorldPosition(worldPos);
+    const seed = Math.abs(worldPos.x * 31.7 + worldPos.z * 67.3) % 97.0;
+
+    pieceObj.traverse((child) => {
+        if (!child.isMesh || !child.geometry) return;
+
+        const original = child.material;
+        const baseColor = getMaterialBaseColor(original);
+        // Charcoal rims on light pieces; warm stone-grey on dark pieces.
+        const crackColor = colorLuminance(baseColor) < 0.45
+            ? new THREE.Color(0.62, 0.58, 0.52)
+            : new THREE.Color(0.018, 0.013, 0.011);
+
+        const fractured = acquireCaptureMaterial(captureCrackMatPool, 'crack');
+        fractured.uniforms.baseColor.value.copy(baseColor);
+        fractured.uniforms.crackColor.value.copy(crackColor);
+        fractured.uniforms.seed.value = seed;
+        fractured.uniforms.fractureProgress.value = 0;
+        fractured.needsUpdate = true;
+
+        child.material = fractured;
+        states.push({ mesh: child, original, fractured });
+    });
+
+    return { states, seed };
+}
+
+function restoreCaptureMaterials(states) {
+    for (const state of states) {
+        if (state.mesh) {
+            state.mesh.material = state.original;
+        }
+        if (state.fractured) {
+            releaseCaptureMaterial(captureCrackMatPool, state.fractured);
+            state.fractured = null;
+        }
+    }
+}
+
+function collectSourceMeshInfos(pieceObj) {
+    const infos = [];
+    pieceObj.updateMatrixWorld(true);
+    const rootInv = pieceObj.matrixWorld.clone().invert();
+
+    pieceObj.traverse((child) => {
+        if (!child.isMesh || !child.geometry) return;
+
+        const geom = child.geometry;
+        if (!geom.boundingBox) geom.computeBoundingBox();
+        const box = geom.boundingBox;
+        const localXf = new THREE.Matrix4().multiplyMatrices(rootInv, child.matrixWorld);
+
+        infos.push({
+            geometry: geom,
+            localMatrix: localXf,
+            baseColor: getMaterialBaseColor(child.material),
+            localMin: box.min.clone(),
+            localSize: box.getSize(new THREE.Vector3()),
+        });
+    });
+
+    return infos;
+}
+
+function animateCaptureFragment(fragment, fragmentIndex, seed) {
+    const start = fragment.position.clone();
+    const angle = seed + (fragmentIndex * Math.PI * 2) / CAPTURE_FRAGMENT_COUNT;
+    // Same world-space offsets as ChessGodot (board is already at BOARD_SCALE).
+    const distance = 0.018 + 0.055 * ((fragmentIndex * 5) % 4);
+    const end = start.clone().add(new THREE.Vector3(
+        Math.cos(angle) * distance,
+        -0.10 - 0.018 * (fragmentIndex % 3),
+        Math.sin(angle) * distance
+    ));
+    end.y = Math.min(end.y, boardY + 0.018);
+
+    const startRot = fragment.rotation.clone();
+    const tumble = new THREE.Euler(
+        startRot.x + 0.10 * Math.sin(angle * 1.7),
+        startRot.y + 0.18 * Math.cos(angle),
+        startRot.z + 0.10 * Math.sin(angle * 0.7)
+    );
+    const startScale = fragment.scale.clone();
+    const midScale = startScale.clone().multiplyScalar(0.88);
+
+    const fallMs = 560;
+    const shrinkMs = 200;
+    const t0 = performance.now();
+
+    return new Promise((resolve) => {
+        function step(now) {
+            const elapsed = now - t0;
+            if (elapsed < fallMs) {
+                const t = easeInQuad(elapsed / fallMs);
+                fragment.position.lerpVectors(start, end, t);
+                fragment.rotation.x = THREE.MathUtils.lerp(startRot.x, tumble.x, t);
+                fragment.rotation.y = THREE.MathUtils.lerp(startRot.y, tumble.y, t);
+                fragment.rotation.z = THREE.MathUtils.lerp(startRot.z, tumble.z, t);
+                fragment.scale.lerpVectors(startScale, midScale, t);
+                requestAnimationFrame(step);
+                return;
+            }
+
+            const shrinkT = Math.min((elapsed - fallMs) / shrinkMs, 1);
+            const st = easeInQuad(shrinkT);
+            fragment.position.copy(end);
+            fragment.rotation.copy(tumble);
+            fragment.scale.copy(midScale).multiplyScalar(1 - st);
+
+            if (shrinkT < 1) {
+                requestAnimationFrame(step);
+                return;
+            }
+
+            // Detach materials before pooling; free the fragment group.
+            fragment.traverse((child) => {
+                if (!child.isMesh) return;
+                const mat = child.material;
+                if (mat && mat.isShaderMaterial) {
+                    child.material = null;
+                    releaseCaptureMaterial(captureFragmentMatPool, mat);
+                }
+            });
+            if (fragment.parent) fragment.parent.remove(fragment);
+            resolve();
+        }
+        requestAnimationFrame(step);
+    });
+}
+
+function spawnCaptureFragments(pieceObj, seed) {
+    const sourceTransform = pieceObj.matrixWorld.clone();
+    const meshInfos = collectSourceMeshInfos(pieceObj);
+    if (meshInfos.length === 0) return;
+
+    const pos = new THREE.Vector3();
+    const quat = new THREE.Quaternion();
+    const scl = new THREE.Vector3();
+    sourceTransform.decompose(pos, quat, scl);
+
+    for (let fragmentIndex = 0; fragmentIndex < CAPTURE_FRAGMENT_COUNT; fragmentIndex++) {
+        const fragment = new THREE.Group();
+        fragment.name = 'CaptureFragment';
+        fragment.position.copy(pos);
+        fragment.quaternion.copy(quat);
+        fragment.scale.copy(scl);
+        scene.add(fragment);
+
+        for (const info of meshInfos) {
+            const mesh = new THREE.Mesh(info.geometry);
+            mesh.castShadow = false;
+            mesh.receiveShadow = false;
+            // Local pose relative to the piece root.
+            const lp = new THREE.Vector3();
+            const lq = new THREE.Quaternion();
+            const ls = new THREE.Vector3();
+            info.localMatrix.decompose(lp, lq, ls);
+            mesh.position.copy(lp);
+            mesh.quaternion.copy(lq);
+            mesh.scale.copy(ls);
+
+            const material = acquireCaptureMaterial(captureFragmentMatPool, 'fragment');
+            material.uniforms.baseColor.value.copy(info.baseColor);
+            material.uniforms.localMin.value.copy(info.localMin);
+            material.uniforms.localSize.value.copy(info.localSize);
+            material.uniforms.fragmentIndex.value = fragmentIndex;
+            material.uniforms.fragmentCount.value = CAPTURE_FRAGMENT_COUNT;
+            material.uniforms.seed.value = seed;
+            material.needsUpdate = true;
+            mesh.material = material;
+            fragment.add(mesh);
+        }
+
+        // Fire-and-forget: fragments continue after the main capture promise resolves.
+        animateCaptureFragment(fragment, fragmentIndex, seed);
+    }
+}
+
 function animateCapture(pieceObj) {
     return new Promise((resolve) => {
+        if (!pieceObj) {
+            resolve();
+            return;
+        }
+
         const startScale = pieceObj.scale.clone();
-        const startTime = Date.now();
-        const duration = 500;
+        const startQuaternion = pieceObj.quaternion.clone();
+        const startPosition = pieceObj.position.clone();
+        const { states, seed } = applyCaptureCrackMaterials(pieceObj);
+        let fragmentsStarted = false;
+        const startTime = performance.now();
 
-        function animate() {
-            const elapsed = Date.now() - startTime;
-            const progress = Math.min(elapsed / duration, 1);
+        function finish() {
+            restoreCaptureMaterials(states);
+            pieceObj.visible = true;
+            pieceObj.scale.copy(startScale);
+            pieceObj.quaternion.copy(startQuaternion);
+            pieceObj.position.copy(startPosition);
+            if (pieceObj.parent) pieceObj.parent.remove(pieceObj);
+            resolve();
+        }
 
-            // Shrink and spin
-            const scale = 1 - progress;
-            pieceObj.scale.set(startScale.x * scale, startScale.y * scale, startScale.z * scale);
-            pieceObj.rotation.y += 0.2;
+        function animate(now) {
+            const progress = Math.min((now - startTime) / CAPTURE_DURATION, 1);
+            // Partly-open seam on frame 0 so the player sees an immediate reaction.
+            const fracture = THREE.MathUtils.lerp(0.18, 1.0, easeInOutCubic(progress));
+
+            for (const state of states) {
+                if (state.fractured) {
+                    state.fractured.uniforms.fractureProgress.value = fracture;
+                }
+            }
+
+            // Hold the full piece still while seams form.
+            pieceObj.scale.copy(startScale);
+            pieceObj.quaternion.copy(startQuaternion);
+            pieceObj.position.copy(startPosition);
+
+            if (fracture >= 0.64 && !fragmentsStarted) {
+                // Restore originals before sampling base colors for fragments.
+                restoreCaptureMaterials(states);
+                spawnCaptureFragments(pieceObj, seed);
+                pieceObj.visible = false;
+                fragmentsStarted = true;
+            }
 
             if (progress < 1) {
                 requestAnimationFrame(animate);
             } else {
-                if (pieceObj.parent) pieceObj.parent.remove(pieceObj);
-                resolve();
+                finish();
             }
         }
-        animate();
+
+        requestAnimationFrame(animate);
     });
 }
 
