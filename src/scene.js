@@ -51,7 +51,7 @@ function updateLoadingProgress(loaded, total) {
 }
 
 
-export const BOARD_SCALE = 20;
+export const BOARD_SCALE = 26;
 export const BOARD_ROTATION_Y = -90; // Degrees
 
 export let rankDir = new THREE.Vector3();
