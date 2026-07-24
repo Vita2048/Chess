@@ -499,10 +499,7 @@ async function executeMove(move) {
             clearHoverHighlight();
 
             // Wait for move and capture animations to complete
-            await movePieceVisual(move.from, move.to, move.promotion, true);
-            console.log("Pieces after visual move:", Object.keys(pieces));
-
-            // Check for castling
+            let movePromises = [];
             if (result.flags.includes('k') || result.flags.includes('q')) {
                 let rookFrom, rookTo;
                 if (result.color === 'w') {
@@ -524,12 +521,17 @@ async function executeMove(move) {
                 }
 
                 if (rookFrom && rookTo) {
-                    console.log(`Castling detected! Moving rook from ${rookFrom} to ${rookTo}`);
-                    console.log(`Before rook move: pieces[${rookFrom}] =`, !!pieces[rookFrom], `game.get(${rookFrom}) =`, game.get(rookFrom));
-                    await movePieceVisual(rookFrom, rookTo, null, true);
-                    console.log(`After rook move: pieces[${rookTo}] =`, !!pieces[rookTo], `game.get(${rookTo}) =`, game.get(rookTo));
+                    console.log(`Castling detected! Moving King (${move.from}->${move.to}) and Rook (${rookFrom}->${rookTo}) concurrently.`);
+                    movePromises.push(movePieceVisual(move.from, move.to, move.promotion, true));
+                    movePromises.push(movePieceVisual(rookFrom, rookTo, null, true));
+                } else {
+                    movePromises.push(movePieceVisual(move.from, move.to, move.promotion, true));
                 }
+            } else {
+                movePromises.push(movePieceVisual(move.from, move.to, move.promotion, true));
             }
+            await Promise.all(movePromises);
+            console.log("Pieces after visual move:", Object.keys(pieces));
 
             await removeCapturedPieces();
             console.log("Pieces after removeCapturedPieces:", Object.keys(pieces));
@@ -564,10 +566,7 @@ async function executeMove(move) {
                         }
                     }
                     console.log("Board after AI move:", game.board());
-                    await movePieceVisual(bestMove.from, bestMove.to, bestMove.promotion, true);
-                    console.log("Pieces after AI visual move:", Object.keys(pieces));
-
-                    // Check for castling (AI)
+                    let aiMovePromises = [];
                     if (result && (result.flags.includes('k') || result.flags.includes('q'))) {
                         let rookFrom, rookTo;
                         if (result.color === 'w') {
@@ -578,9 +577,17 @@ async function executeMove(move) {
                             else if (result.flags.includes('q')) { rookFrom = 'a8'; rookTo = 'd8'; }
                         }
                         if (rookFrom && rookTo) {
-                            await movePieceVisual(rookFrom, rookTo, null, true);
+                            console.log(`AI Castling detected! Moving King (${bestMove.from}->${bestMove.to}) and Rook (${rookFrom}->${rookTo}) concurrently.`);
+                            aiMovePromises.push(movePieceVisual(bestMove.from, bestMove.to, bestMove.promotion, true));
+                            aiMovePromises.push(movePieceVisual(rookFrom, rookTo, null, true));
+                        } else {
+                            aiMovePromises.push(movePieceVisual(bestMove.from, bestMove.to, bestMove.promotion, true));
                         }
+                    } else {
+                        aiMovePromises.push(movePieceVisual(bestMove.from, bestMove.to, bestMove.promotion, true));
                     }
+                    await Promise.all(aiMovePromises);
+                    console.log("Pieces after AI visual move:", Object.keys(pieces));
 
                     await removeCapturedPieces();
                     console.log("Pieces after AI removeCapturedPieces:", Object.keys(pieces));
@@ -688,6 +695,49 @@ function handleBoardClick(point) {
         handleSquareClick(closestSquare);
     }
 }
+// --- Ground glow disc shader (ported from C++ g_highlight_glow_ps in WinChessApp Renderer.cpp) ---
+const HIGHLIGHT_GLOW_VERT = /* glsl */ `
+varying vec2 vUv;
+void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+const HIGHLIGHT_GLOW_FRAG = /* glsl */ `
+uniform float timeValue;
+uniform float layerAlpha;
+varying vec2 vUv;
+
+void main() {
+    vec2 delta = vUv - vec2(0.5);
+    float dist = length(delta);
+    if (dist > 0.5) discard;
+
+    float layer = max(layerAlpha, 0.01);
+
+    vec3 darkBlue   = vec3(0.00, 0.02, 0.18);
+    vec3 midBlue    = vec3(0.00, 0.10, 0.45);
+    vec3 brightBlue = vec3(0.10, 0.35, 0.95);
+    vec3 paleBlue   = vec3(0.42, 0.70, 1.00);
+
+    float radialFade = 1.0 - smoothstep(0.06, 0.5, dist);
+    float core       = 1.0 - smoothstep(0.0,  0.20, dist);
+    float ring       = smoothstep(0.16, 0.24, dist) - smoothstep(0.30, 0.40, dist);
+    float pulse      = 0.82 + 0.18 * sin(timeValue * 3.25);
+
+    vec3 centerBlue = mix(midBlue, brightBlue, 0.72);
+    vec3 color = mix(darkBlue, brightBlue, clamp(radialFade * 0.9 + ring * 0.4, 0.0, 1.0));
+    color = mix(color, centerBlue, clamp(core * 0.85, 0.0, 1.0));
+    color = mix(color, paleBlue,   clamp(ring * 0.10, 0.0, 1.0));
+
+    float envelope = (radialFade * 0.30 + core * 0.18 + ring * 0.20) * pulse;
+    float strength = (layer / 0.12) * 2.15;
+    vec3 rgb = color * envelope * strength;
+    gl_FragColor = vec4(rgb, 1.0);
+}
+`;
+
 // --- Square highlights (ported from ChessGodot highlight.gdshader) ---
 // mode: 0 = hover, 1 = allowed move, 2 = selected
 const HIGHLIGHT_VERT = /* glsl */ `
@@ -960,178 +1010,122 @@ function movePieceVisual(from, to, promotionType, animate = false) {
 
 function animatePieceMove(pieceObj, targetPos, callback) {
     const startPos = pieceObj.position.clone();
-    const duration = 1225; // 1.625 seconds animation (30% slower)
+    const duration = 1000; // 1.0s animation (matching WinChessApp MoveAnim duration)
     const startTime = Date.now();
+    const startTimeSec = startTime / 1000;
 
-    // === ENHANCED MULTI-LAYER GLOW SYSTEM ===
+    // Measure exact center of piece bounding box to ensure glow discs are perfectly centered
+    pieceObj.updateMatrixWorld(true);
+    const startBbox = new THREE.Box3().setFromObject(pieceObj);
+    const startCenter = new THREE.Vector3();
+    startBbox.getCenter(startCenter);
+    const centerOffset = startCenter.clone().sub(startPos);
+    centerOffset.y = 0; // only X and Z horizontal offset
 
-    // 1. Bright central core light (intense white-blue)
-    const coreLight = new THREE.PointLight(0x5588cc, 4.0, 12);
-    coreLight.position.copy(startPos);
-    scene.add(coreLight);
+    // Moving-piece ground glow: two additive discs (3x / 1.85x size), ported from Renderer.cpp
+    const minStep = Math.min(stepFile, stepRank);
+    const squareGlowSize = minStep * 1.08;
+    const surfaceY = boardY !== undefined ? boardY : startPos.y;
 
-    // 2. Mid-range blue glow
-    const midGlow = new THREE.PointLight(0x2255aa, 2.5, 18);
-    midGlow.position.copy(startPos);
-    scene.add(midGlow);
+    const createGlowDisc = (multiplier, yOffset, layerAlpha) => {
+        const size = squareGlowSize * multiplier;
+        const geom = new THREE.PlaneGeometry(size, size);
+        const mat = new THREE.ShaderMaterial({
+            uniforms: {
+                timeValue: { value: startTimeSec },
+                layerAlpha: { value: layerAlpha }
+            },
+            transparent: true,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            vertexShader: HIGHLIGHT_GLOW_VERT,
+            fragmentShader: HIGHLIGHT_GLOW_FRAG,
+        });
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.castShadow = false;
+        mesh.receiveShadow = false;
+        mesh.renderOrder = 3;
+        mesh.position.set(startCenter.x, surfaceY + yOffset, startCenter.z);
+        alignHighlightToBoard(mesh);
+        scene.add(mesh);
+        return mesh;
+    };
 
-    // 3. Outer soft blue aura
-    const outerGlow = new THREE.PointLight(0x002266, 1.5, 25);
-    outerGlow.position.copy(startPos);
-    scene.add(outerGlow);
+    const outerGlowDisc = createGlowDisc(3.00, 0.018, 0.12);
+    const innerGlowDisc = createGlowDisc(1.85, 0.019, 0.24);
 
-    // 4. Create glowing sphere around the piece (inner glow)
-    const innerGlowGeometry = new THREE.SphereGeometry(0.8, 16, 16);
-    const innerGlowMaterial = new THREE.MeshBasicMaterial({
-        color: 0x4488bb,
-        transparent: true,
-        opacity: 0.2,
-        side: THREE.BackSide
-    });
-    const innerGlowSphere = new THREE.Mesh(innerGlowGeometry, innerGlowMaterial);
-    innerGlowSphere.position.copy(startPos);
-    scene.add(innerGlowSphere);
-
-    // 5. Create outer radial glow sphere
-    const outerGlowGeometry = new THREE.SphereGeometry(1.5, 16, 16);
-    const outerGlowMaterial = new THREE.MeshBasicMaterial({
-        color: 0x113388,
-        transparent: true,
-        opacity: 0.1,
-        side: THREE.BackSide
-    });
-    const outerGlowSphere = new THREE.Mesh(outerGlowGeometry, outerGlowMaterial);
-    outerGlowSphere.position.copy(startPos);
-    scene.add(outerGlowSphere);
-
-    // 6. Create radial light rays effect (star burst)
-    const raysMaterial = new THREE.ShaderMaterial({
-        transparent: true,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        uniforms: {
-            time: { value: 0 },
-            opacity: { value: 0.3 }
-        },
-        vertexShader: `
-            varying vec2 vUv;
-            void main() {
-                vUv = uv;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `,
-        fragmentShader: `
-            uniform float time;
-            uniform float opacity;
-            varying vec2 vUv;
-            void main() {
-                vec2 center = vec2(0.5, 0.5);
-                vec2 toCenter = vUv - center;
-                float dist = length(toCenter);
-                float angle = atan(toCenter.y, toCenter.x);
-                
-                // Create radial rays
-                float rays = abs(sin(angle * 8.0 + time * 3.0));
-                rays = pow(rays, 3.0);
-                
-                // Fade from center
-                float radialFade = 1.0 - smoothstep(0.0, 0.5, dist);
-                
-                // Bright blue color
-                vec3 color = vec3(0.15, 0.35, 0.7);
-                float alpha = rays * radialFade * opacity;
-                
-                gl_FragColor = vec4(color, alpha);
-            }
-        `
-    });
-
-    const raysGeometry = new THREE.PlaneGeometry(3, 3);
-    const raysMesh = new THREE.Mesh(raysGeometry, raysMaterial);
-    raysMesh.position.copy(startPos);
-    raysMesh.position.y += 0.1; // Slightly above board
-    raysMesh.rotation.x = -Math.PI / 2; // Lay flat
-    scene.add(raysMesh);
-
-    // Make piece highly emissive for intense glow
-    // IMPORTANT: Clone materials first to avoid affecting all pieces of the same type
+    // Piece surface tint while moving — ported from Renderer.cpp (blendTowardsGlow)
     let originalMaterials = [];
     pieceObj.traverse((child) => {
         if (child.isMesh && child.material) {
-            // Store original material
             originalMaterials.push({
                 mesh: child,
                 material: child.material
             });
-
-            // Clone the material so we don't affect other pieces
             child.material = child.material.clone();
-
-            // Apply intense blue emissive glow to the cloned material
-            child.material.emissive = new THREE.Color(0x114488);
-            child.material.emissiveIntensity = 1.75;
-            if (child.material.color) {
-                child.material.color = new THREE.Color(0x5588bb);
-            }
-            child.material.needsUpdate = true;
         }
     });
 
+    const smootherStep = (t) => {
+        t = Math.max(0, Math.min(1, t));
+        return t < 0.5
+            ? 4 * t * t * t
+            : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    };
+
     function animate() {
-        const elapsed = Date.now() - startTime;
-        const progress = Math.min(elapsed / duration, 1);
+        const now = Date.now();
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1.0);
+        const elapsedSec = elapsed / 1000;
+        const animTime = startTimeSec + elapsedSec;
 
-        // Smooth easing with slight bounce at end
-        const easeProgress = progress < 0.5
-            ? 4 * progress * progress * progress
-            : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+        const easeProgress = smootherStep(progress);
 
-        // Move piece
+        // Interpolate piece position
         pieceObj.position.lerpVectors(startPos, targetPos, easeProgress);
 
-        // Calculate current center of the piece
-        pieceObj.updateMatrixWorld(true);
-        const bbox = new THREE.Box3().setFromObject(pieceObj);
-        const center = new THREE.Vector3();
-        bbox.getCenter(center);
+        // Update ground glow discs position centered on the piece bounding box center
+        const currentPos = pieceObj.position;
+        const currentCenterX = currentPos.x + centerOffset.x;
+        const currentCenterZ = currentPos.z + centerOffset.z;
 
-        // Update all glow elements to follow piece center
-        coreLight.position.copy(center);
-        midGlow.position.copy(center);
-        outerGlow.position.copy(center);
-        innerGlowSphere.position.copy(center);
-        outerGlowSphere.position.copy(center);
-        raysMesh.position.copy(center);
-        raysMesh.position.y += 0.1;
+        outerGlowDisc.position.x = currentCenterX;
+        outerGlowDisc.position.z = currentCenterZ;
+        outerGlowDisc.material.uniforms.timeValue.value = animTime;
 
-        // Pulsing intensity (faster, more dramatic)
-        const pulse = Math.sin(progress * Math.PI * 6); // 3 full pulses
-        const intensityMultiplier = 1.0 + pulse * 0.5;
+        innerGlowDisc.position.x = currentCenterX;
+        innerGlowDisc.position.z = currentCenterZ;
+        innerGlowDisc.material.uniforms.timeValue.value = animTime;
 
-        coreLight.intensity = 4.0 * intensityMultiplier;
-        midGlow.intensity = 2.5 * intensityMultiplier;
-        outerGlow.intensity = 1.5 * intensityMultiplier;
+        // Apply piece surface color blend towards glow (blendTowardsGlow from Renderer.cpp)
+        const animPulse = 0.5 + 0.5 * Math.sin(elapsedSec * 9.0);
+        const blendAmt = 0.32 + 0.14 * animPulse;
+        const glowR = 0.33 + 0.18 * animPulse;
+        const glowG = 0.56 + 0.14 * animPulse;
+        const glowB = 1.00;
 
-        // Pulsing glow spheres
-        const sphereScale = 1.0 + pulse * 0.3;
-        innerGlowSphere.scale.setScalar(sphereScale);
-        outerGlowSphere.scale.setScalar(sphereScale * 0.9);
+        originalMaterials.forEach(({ mesh, material }) => {
+            const baseCol = material.color || new THREE.Color(1, 1, 1);
+            mesh.material.color.setRGB(
+                baseCol.r + (glowR - baseCol.r) * blendAmt,
+                baseCol.g + (glowG - baseCol.g) * blendAmt,
+                baseCol.b + (glowB - baseCol.b) * blendAmt
+            );
+            mesh.material.needsUpdate = true;
+        });
 
-        // Rotate rays for dynamic effect
-        raysMesh.rotation.z += 0.02;
-        raysMaterial.uniforms.time.value = progress * 10;
-        raysMaterial.uniforms.opacity.value = 0.3 * (1.0 - progress * 0.3);
-
-        if (progress < 1) {
+        if (progress < 1.0) {
             requestAnimationFrame(animate);
         } else {
-            // Cleanup
-            scene.remove(coreLight);
-            scene.remove(midGlow);
-            scene.remove(outerGlow);
-            scene.remove(innerGlowSphere);
-            scene.remove(outerGlowSphere);
-            scene.remove(raysMesh);
+            // Clean up ground glow discs
+            scene.remove(outerGlowDisc);
+            scene.remove(innerGlowDisc);
+            outerGlowDisc.geometry.dispose();
+            outerGlowDisc.material.dispose();
+            innerGlowDisc.geometry.dispose();
+            innerGlowDisc.material.dispose();
 
             // Restore original materials
             originalMaterials.forEach(({ mesh, material }) => {
