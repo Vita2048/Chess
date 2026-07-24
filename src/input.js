@@ -472,7 +472,7 @@ function showGameOverOverlay(message) {
     // Hide after 5 seconds
     setTimeout(() => {
         overlay.classList.add('hidden');
-    }, 5000);
+    }, 3000);
 }
 
 async function executeMove(move) {

@@ -813,9 +813,9 @@ body {
    ──────────────────────────────────────────── */
 
 #game-over-overlay {
-  background: oklch(0 0 0 / 0.85);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: oklch(0 0 0 / 0.45);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
   pointer-events: none;
 }
 
