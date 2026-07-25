@@ -14,7 +14,7 @@ let currentHoveredSquare = null;
 let hoverHighlight = null;
 // Active highlight meshes whose shaders need a time uniform each frame.
 const activeHighlightMeshes = new Set();
-let currentDifficulty = 'stockfish_5';
+let currentDifficulty = 'stockfish_3';
 let currentTurnText = 'White\'s Turn';
 let isMoveInProgress = false;
 
