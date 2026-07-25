@@ -44,7 +44,7 @@ function getCurrentSkillLevel() {
     if (currentDifficulty.startsWith('stockfish_')) {
         return parseInt(currentDifficulty.split('_')[1], 10);
     }
-    return 5;
+    return 3;
 }
 
 function updateSkillDialogUI(level) {
@@ -106,6 +106,17 @@ export function initInput(cam, sc) {
     // when the press starts on top of the board.
     if (renderer && renderer.domElement) {
         renderer.domElement.addEventListener('pointerdown', onPointerDownCapture, true);
+    }
+
+    // Prevent clicks inside modal dialogs from bubbling to the window
+    // listener and triggering board piece selection.
+    const newGameModal = document.getElementById('new-game-modal');
+    if (newGameModal) {
+        newGameModal.addEventListener('click', stopModalPropagation, false);
+    }
+    const promoModal = document.getElementById('promotion-modal');
+    if (promoModal) {
+        promoModal.addEventListener('click', stopModalPropagation, false);
     }
 
     initToolbar();
@@ -210,6 +221,12 @@ function onMouseClick(event) {
     if (raycaster.ray.intersectPlane(plane, intersection)) {
         handleBoardClick(intersection);
     }
+}
+
+
+
+function stopModalPropagation(event) {
+    event.stopPropagation();
 }
 
 let _boardBounds = null;
