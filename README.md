@@ -1,6 +1,6 @@
 # Chess ♟️
 
-A chess game built with Vite + TypeScript + three.js (or whatever your stack is).
+Play: https://vita2048.github.io/Chess/
 
 ## Quick start
 
